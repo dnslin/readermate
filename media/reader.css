@@ -1,0 +1,104 @@
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  line-height: 1.6;
+}
+
+.reader-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: var(--vscode-editorGroupHeader-tabsBackground);
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+}
+
+.nav-btn {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#chapter-info {
+  font-size: 14px;
+  color: var(--vscode-foreground);
+}
+
+.content-area {
+  flex: 1;
+  padding: 20px 40px;
+  overflow-y: auto;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#chapter-title {
+  text-align: center;
+  margin-bottom: 30px;
+  color: var(--vscode-textPreformat-foreground);
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.content {
+  font-size: 16px;
+  line-height: 2;
+  text-align: justify;
+}
+
+.content p {
+  margin-bottom: 16px;
+  text-indent: 2em;
+}
+
+.content-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.content-area::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background);
+}
+
+.content-area::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+  border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+  .content-area {
+    padding: 15px 20px;
+  }
+
+  .toolbar {
+    padding: 8px 15px;
+  }
+
+  .nav-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}

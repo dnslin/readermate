@@ -1,0 +1,127 @@
+{
+  "name": "novel-reader",
+  "displayName": "小说阅读器",
+  "description": "基于阅读3服务端的VS Code小说阅读插件",
+  "version": "1.0.0",
+  "publisher": "novel-reader",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["novel", "reader", "book", "阅读", "小说"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "novelReader.openBookshelf",
+        "title": "打开书架",
+        "category": "小说阅读器",
+        "icon": "$(library)"
+      },
+      {
+        "command": "novelReader.openReader",
+        "title": "打开阅读器"
+      },
+      {
+        "command": "novelReader.prevChapter",
+        "title": "上一章"
+      },
+      {
+        "command": "novelReader.nextChapter",
+        "title": "下一章"
+      },
+      {
+        "command": "novelReader.refreshBookshelf",
+        "title": "刷新书架",
+        "icon": "$(refresh)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "novelReader.openBookshelf",
+        "key": "ctrl+shift+r"
+      },
+      {
+        "command": "novelReader.prevChapter",
+        "key": "ctrl+left",
+        "when": "novelReader.readerActive"
+      },
+      {
+        "command": "novelReader.nextChapter",
+        "key": "ctrl+right",
+        "when": "novelReader.readerActive"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "novelReader",
+          "title": "小说阅读器",
+          "icon": "$(book)"
+        }
+      ]
+    },
+    "views": {
+      "novelReader": [
+        {
+          "id": "novelBookshelf",
+          "name": "我的书架",
+          "when": "novelReader.enabled"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "novelReader.refreshBookshelf",
+          "when": "view == novelBookshelf",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "novelReader.openReader",
+          "when": "view == novelBookshelf && viewItem == book"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "小说阅读器",
+      "properties": {
+        "novelReader.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "阅读服务器地址"
+        },
+        "novelReader.username": {
+          "type": "string",
+          "description": "用户名"
+        },
+        "novelReader.pageSize": {
+          "type": "number",
+          "default": 20,
+          "description": "每页章节数"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --allow-star-activation",
+    "pretest": "pnpm run compile && pnpm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.60.0",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "@vscode/test-electron": "^2.2.0",
+    "@vscode/vsce": "^2.15.0",
+    "eslint": "^8.28.0",
+    "typescript": "^4.9.4"
+  }
+}

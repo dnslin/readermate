@@ -1,0 +1,21 @@
+node_modules/
+out/
+.vscode-test/
+*.vsix
+.DS_Store
+*.log
+pnpm-lock.yaml
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS generated files
+Thumbs.db
