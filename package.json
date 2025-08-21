@@ -107,7 +107,12 @@
         "readermate.serverUrl": {
           "type": "string",
           "default": "https://reader.me",
-          "description": "Reader server base URL (plugin will automatically append /reader3 path)"
+          "description": "Reader server base URL"
+        },
+        "readermate.appendReader3Path": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically append /reader3 path to server URL"
         },
         "readermate.username": {
           "type": "string",

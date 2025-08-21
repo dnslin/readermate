@@ -12,12 +12,13 @@ export class ReaderApiClient {
   constructor(
     baseUrl: string,
     accessToken?: string,
-    outputChannel?: vscode.OutputChannel
+    outputChannel?: vscode.OutputChannel,
+    appendReader3Path: boolean = true
   ) {
-    // 确保baseUrl以斜杠结尾，并自动添加reader3路径
+    // 确保baseUrl以斜杠结尾
     let normalizedUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
-    // 如果URL不包含reader3路径，则自动添加
-    if (!normalizedUrl.includes("/reader3/")) {
+    // 根据配置决定是否添加reader3路径
+    if (appendReader3Path && !normalizedUrl.includes("/reader3/")) {
       normalizedUrl = normalizedUrl + "reader3/";
     }
     this.baseUrl = normalizedUrl;

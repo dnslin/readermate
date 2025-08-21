@@ -23,6 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
   const serverUrl = config.get<string>("serverUrl", "https://reader.kuku.me");
   const username = config.get<string>("username");
   const token = config.get<string>("token");
+  const appendReader3Path = config.get<boolean>("appendReader3Path", true);
 
   // 读取预加载配置
   const preloadConfig: PreloadConfig = {
@@ -48,7 +49,12 @@ export function activate(context: vscode.ExtensionContext) {
   outputChannel.appendLine(`用户名: ${username}`);
   outputChannel.appendLine(`访问令牌: ${accessToken ? "已配置" : "未配置"}`);
 
-  apiClient = new ReaderApiClient(serverUrl, accessToken, outputChannel);
+  apiClient = new ReaderApiClient(
+    serverUrl,
+    accessToken,
+    outputChannel,
+    appendReader3Path
+  );
 
   bookshelfProvider = new BookshelfProvider(apiClient);
   vscode.window.createTreeView("readermateBookshelf", {
@@ -108,18 +114,28 @@ export function activate(context: vscode.ExtensionContext) {
     if (
       e.affectsConfiguration("readermate.serverUrl") ||
       e.affectsConfiguration("readermate.username") ||
-      e.affectsConfiguration("readermate.token")
+      e.affectsConfiguration("readermate.token") ||
+      e.affectsConfiguration("readermate.appendReader3Path")
     ) {
       const config = vscode.workspace.getConfiguration("readermate");
       const newUrl = config.get<string>("serverUrl", "");
       const newUsername = config.get<string>("username");
       const newToken = config.get<string>("token");
+      const newAppendReader3Path = config.get<boolean>(
+        "appendReader3Path",
+        true
+      );
 
       // 构建新的 accessToken
       const newAccessToken =
         newUsername && newToken ? `${newUsername}:${newToken}` : undefined;
 
-      apiClient = new ReaderApiClient(newUrl, newAccessToken, outputChannel);
+      apiClient = new ReaderApiClient(
+        newUrl,
+        newAccessToken,
+        outputChannel,
+        newAppendReader3Path
+      );
       bookshelfProvider = new BookshelfProvider(apiClient);
     }
 
