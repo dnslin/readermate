@@ -9,6 +9,9 @@ let bookshelfProvider: BookshelfProvider;
 export function activate(context: vscode.ExtensionContext) {
   console.log("小说阅读器插件已激活");
 
+  // 显示激活消息
+  vscode.window.showInformationMessage("小说阅读器插件已激活！");
+
   const config = vscode.workspace.getConfiguration("novelReader");
   const serverUrl = config.get<string>("serverUrl", "http://localhost:8080");
   const username = config.get<string>("username");
@@ -16,6 +19,19 @@ export function activate(context: vscode.ExtensionContext) {
 
   // 构建 accessToken，格式为 username:token
   const accessToken = username && token ? `${username}:${token}` : undefined;
+
+  // 验证配置
+  if (!serverUrl) {
+    vscode.window.showWarningMessage("请先配置小说阅读器的服务器地址");
+  }
+
+  if (!accessToken) {
+    vscode.window.showWarningMessage("请先配置小说阅读器的用户名和访问令牌");
+  }
+
+  console.log(`服务器地址: ${serverUrl}`);
+  console.log(`用户名: ${username}`);
+  console.log(`访问令牌: ${accessToken ? "已配置" : "未配置"}`);
 
   apiClient = new ReaderApiClient(serverUrl, accessToken);
 
@@ -27,6 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const commands = [
     vscode.commands.registerCommand("novelReader.openBookshelf", () => {
+      console.log("执行打开书架命令");
       vscode.commands.executeCommand("novelBookshelf.focus");
     }),
 

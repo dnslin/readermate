@@ -17,7 +17,10 @@
     "阅读",
     "小说"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:novelReader.openBookshelf",
+    "onView:novelBookshelf"
+  ],
   "main": "./out/extension.js",
   "repository": {
     "type": "git",
@@ -52,7 +55,7 @@
     "keybindings": [
       {
         "command": "novelReader.openBookshelf",
-        "key": "ctrl+shift+r"
+        "key": "ctrl+shift+l"
       },
       {
         "command": "novelReader.prevChapter",
@@ -78,8 +81,7 @@
       "novelReader": [
         {
           "id": "novelBookshelf",
-          "name": "我的书架",
-          "when": "novelReader.enabled"
+          "name": "我的书架"
         }
       ]
     },

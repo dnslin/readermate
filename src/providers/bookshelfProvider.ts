@@ -15,6 +15,7 @@ export class BookshelfProvider implements vscode.TreeDataProvider<BookItem> {
 
   constructor(apiClient: ReaderApiClient) {
     this.apiClient = apiClient;
+    this.loadBooks(); // 初始化时自动加载书籍
   }
 
   refresh(): void {

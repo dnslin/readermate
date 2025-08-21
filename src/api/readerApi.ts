@@ -21,6 +21,8 @@ export class ReaderApiClient {
       url.searchParams.set("v", Date.now().toString());
     }
 
+    console.log(`发起API请求: ${url.toString()}`);
+
     return new Promise((resolve, reject) => {
       const client = url.protocol === "https:" ? https : http;
       const req = client.request(
@@ -37,6 +39,9 @@ export class ReaderApiClient {
           let data = "";
           res.on("data", (chunk: string) => (data += chunk));
           res.on("end", () => {
+            console.log(`API响应状态码: ${res.statusCode}`);
+            console.log(`API响应内容: ${data}`);
+
             try {
               const result = JSON.parse(data);
               if (result.isSuccess) {
@@ -45,7 +50,8 @@ export class ReaderApiClient {
                 reject(new Error(result.errorMsg || "请求失败"));
               }
             } catch (e) {
-              reject(new Error("响应解析失败"));
+              console.error(`JSON解析失败，原始响应: ${data}`);
+              reject(new Error(`响应解析失败: ${data.substring(0, 200)}...`));
             }
           });
         }
