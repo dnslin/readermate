@@ -8,6 +8,10 @@
   const chapterTitle = document.getElementById("chapter-title");
   const chapterContent = document.getElementById("chapter-content");
 
+  // 阅读进度跟踪变量
+  let lastReportedProgress = 0;
+  const PROGRESS_REPORT_THRESHOLD = 5; // 每5%报告一次
+
   prevBtn.addEventListener("click", () => {
     vscode.postMessage({ command: "prevChapter" });
   });

@@ -68,6 +68,8 @@ export class ReaderApiClient {
           },
         },
         (res: http.IncomingMessage) => {
+          // 设置响应编码为UTF-8以正确处理中文字符
+          res.setEncoding("utf8");
           let data = "";
           res.on("data", (chunk: string) => (data += chunk));
           res.on("end", () => {
