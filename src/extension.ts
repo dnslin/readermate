@@ -54,7 +54,12 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand("novelReader.openReader", (book) => {
-      ReaderProvider.createOrShow(context.extensionUri, apiClient, book);
+      ReaderProvider.createOrShow(
+        context.extensionUri,
+        apiClient,
+        bookshelfProvider,
+        book
+      );
     }),
 
     vscode.commands.registerCommand("novelReader.refreshBookshelf", () => {
@@ -109,4 +114,3 @@ export function deactivate() {
     ReaderProvider.currentPanel.dispose();
   }
 }
-

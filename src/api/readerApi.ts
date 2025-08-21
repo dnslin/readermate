@@ -174,20 +174,12 @@ export class ReaderApiClient {
   }
 
   async saveBookProgress(
-    name: string,
-    author: string,
-    durChapterIndex: number,
-    durChapterPos: number,
-    durChapterTime: number,
-    durChapterTitle?: string
+    bookUrl: string,
+    durChapterIndex: number
   ): Promise<void> {
     const progressData = {
-      name,
-      author,
-      durChapterIndex,
-      durChapterPos,
-      durChapterTime,
-      durChapterTitle,
+      url: bookUrl,
+      index: durChapterIndex,
     };
 
     console.log(`保存阅读进度: ${JSON.stringify(progressData, null, 2)}`);

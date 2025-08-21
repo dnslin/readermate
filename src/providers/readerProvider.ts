@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ReaderApiClient } from "../api/readerApi";
 import { Book, Chapter, BookContent } from "../api/types";
+import { BookshelfProvider } from "./bookshelfProvider";
 
 export class ReaderProvider implements vscode.WebviewPanelSerializer {
   public static currentPanel: ReaderProvider | undefined;
@@ -14,10 +15,12 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
   private chapters: Chapter[] = [];
   private currentChapterIndex = 0;
   private apiClient: ReaderApiClient;
+  private bookshelfProvider?: BookshelfProvider;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
     apiClient: ReaderApiClient,
+    bookshelfProvider: BookshelfProvider,
     book?: Book
   ) {
     const column = vscode.window.activeTextEditor
@@ -49,7 +52,8 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     ReaderProvider.currentPanel = new ReaderProvider(
       panel,
       extensionUri,
-      apiClient
+      apiClient,
+      bookshelfProvider
     );
 
     if (book) {
@@ -60,11 +64,13 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
   constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
-    apiClient: ReaderApiClient
+    apiClient: ReaderApiClient,
+    bookshelfProvider?: BookshelfProvider
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this.apiClient = apiClient;
+    this.bookshelfProvider = bookshelfProvider;
 
     this._update();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -154,20 +160,21 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     }
 
     try {
-      const currentChapter = this.chapters[this.currentChapterIndex];
       await this.apiClient.saveBookProgress(
-        this.currentBook.name,
-        this.currentBook.author,
-        this.currentChapterIndex,
-        0, // durChapterPos - 章节内阅读位置，这里设为0表示章节开始
-        Date.now(), // durChapterTime - 当前时间戳
-        currentChapter.title // durChapterTitle - 章节标题
+        this.currentBook.bookUrl,
+        this.currentChapterIndex
       );
       console.log(
         `已保存阅读进度: 第${this.currentChapterIndex + 1}章 ${
-          currentChapter.title
+          this.chapters[this.currentChapterIndex]?.title || "未知章节"
         }`
       );
+
+      // 保存进度成功后刷新书架，以更新书籍的阅读进度
+      if (this.bookshelfProvider) {
+        console.log("刷新书架以更新阅读进度");
+        this.bookshelfProvider.refresh();
+      }
     } catch (error) {
       console.error(`保存阅读进度失败:`, error);
       // 不显示错误消息给用户，避免打断阅读体验
