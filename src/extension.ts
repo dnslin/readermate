@@ -10,16 +10,16 @@ let outputChannel: vscode.OutputChannel;
 
 export function activate(context: vscode.ExtensionContext) {
   // 创建输出通道
-  outputChannel = vscode.window.createOutputChannel("小说阅读器");
+  outputChannel = vscode.window.createOutputChannel("ReaderMate");
   context.subscriptions.push(outputChannel);
 
-  outputChannel.appendLine("小说阅读器插件已激活");
-  console.log("小说阅读器插件已激活");
+  outputChannel.appendLine("ReaderMate插件已激活");
+  console.log("ReaderMate插件已激活");
 
   // 显示激活消息
-  vscode.window.showInformationMessage("小说阅读器插件已激活！");
+  vscode.window.showInformationMessage("ReaderMate插件已激活！");
 
-  const config = vscode.workspace.getConfiguration("novelReader");
+  const config = vscode.workspace.getConfiguration("readermate");
   const serverUrl = config.get<string>("serverUrl", "https://reader.kuku.me");
   const username = config.get<string>("username");
   const token = config.get<string>("token");
@@ -37,11 +37,11 @@ export function activate(context: vscode.ExtensionContext) {
 
   // 验证配置
   if (!serverUrl) {
-    vscode.window.showWarningMessage("请先配置小说阅读器的服务器地址");
+    vscode.window.showWarningMessage("请先配置ReaderMate的服务器地址");
   }
 
   if (!accessToken) {
-    vscode.window.showWarningMessage("请先配置小说阅读器的用户名和访问令牌");
+    vscode.window.showWarningMessage("请先配置ReaderMate的用户名和访问令牌");
   }
 
   outputChannel.appendLine(`服务器地址: ${serverUrl}`);
@@ -51,18 +51,18 @@ export function activate(context: vscode.ExtensionContext) {
   apiClient = new ReaderApiClient(serverUrl, accessToken, outputChannel);
 
   bookshelfProvider = new BookshelfProvider(apiClient);
-  vscode.window.createTreeView("novelBookshelf", {
+  vscode.window.createTreeView("readermateBookshelf", {
     treeDataProvider: bookshelfProvider,
     showCollapseAll: false,
   });
 
   const commands = [
-    vscode.commands.registerCommand("novelReader.openBookshelf", () => {
+    vscode.commands.registerCommand("readermate.openBookshelf", () => {
       console.log("执行打开书架命令");
       vscode.commands.executeCommand("novelBookshelf.focus");
     }),
 
-    vscode.commands.registerCommand("novelReader.openReader", (book) => {
+    vscode.commands.registerCommand("readermate.openReader", (book) => {
       ReaderProvider.createOrShow(
         context.extensionUri,
         apiClient,
@@ -72,24 +72,24 @@ export function activate(context: vscode.ExtensionContext) {
       );
     }),
 
-    vscode.commands.registerCommand("novelReader.refreshBookshelf", () => {
+    vscode.commands.registerCommand("readermate.refreshBookshelf", () => {
       bookshelfProvider.refresh();
     }),
 
-    vscode.commands.registerCommand("novelReader.prevChapter", () => {
+    vscode.commands.registerCommand("readermate.prevChapter", () => {
       if (ReaderProvider.currentPanel) {
         ReaderProvider.currentPanel.prevChapter();
       }
     }),
 
-    vscode.commands.registerCommand("novelReader.nextChapter", () => {
+    vscode.commands.registerCommand("readermate.nextChapter", () => {
       if (ReaderProvider.currentPanel) {
         ReaderProvider.currentPanel.nextChapter();
       }
     }),
 
     vscode.window.registerWebviewPanelSerializer(
-      "novelReader",
+      "readermate",
       new ReaderProvider(
         {} as any,
         context.extensionUri,
@@ -102,15 +102,15 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(...commands);
 
-  vscode.commands.executeCommand("setContext", "novelReader.enabled", true);
+  vscode.commands.executeCommand("setContext", "readermate.enabled", true);
 
   vscode.workspace.onDidChangeConfiguration((e) => {
     if (
-      e.affectsConfiguration("novelReader.serverUrl") ||
-      e.affectsConfiguration("novelReader.username") ||
-      e.affectsConfiguration("novelReader.token")
+      e.affectsConfiguration("readermate.serverUrl") ||
+      e.affectsConfiguration("readermate.username") ||
+      e.affectsConfiguration("readermate.token")
     ) {
-      const config = vscode.workspace.getConfiguration("novelReader");
+      const config = vscode.workspace.getConfiguration("readermate");
       const newUrl = config.get<string>("serverUrl", "");
       const newUsername = config.get<string>("username");
       const newToken = config.get<string>("token");
@@ -125,12 +125,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 处理预加载配置变更
     if (
-      e.affectsConfiguration("novelReader.preload.enabled") ||
-      e.affectsConfiguration("novelReader.preload.chapterCount") ||
-      e.affectsConfiguration("novelReader.preload.triggerProgress") ||
-      e.affectsConfiguration("novelReader.preload.maxCacheSize")
+      e.affectsConfiguration("readermate.preload.enabled") ||
+      e.affectsConfiguration("readermate.preload.chapterCount") ||
+      e.affectsConfiguration("readermate.preload.triggerProgress") ||
+      e.affectsConfiguration("readermate.preload.maxCacheSize")
     ) {
-      const config = vscode.workspace.getConfiguration("novelReader");
+      const config = vscode.workspace.getConfiguration("readermate");
       const newPreloadConfig: PreloadConfig = {
         enabled: config.get<boolean>("preload.enabled", true),
         chapterCount: config.get<number>("preload.chapterCount", 2),

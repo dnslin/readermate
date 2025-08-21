@@ -7,7 +7,7 @@ import { PreloadConfig, ReadingProgressEvent } from "../preload/types";
 
 export class ReaderProvider implements vscode.WebviewPanelSerializer {
   public static currentPanel: ReaderProvider | undefined;
-  public static readonly viewType = "novelReader";
+  public static readonly viewType = "readermate";
 
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
@@ -95,7 +95,7 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
 
     vscode.commands.executeCommand(
       "setContext",
-      "novelReader.readerActive",
+      "readermate.readerActive",
       true
     );
   }
@@ -361,7 +361,7 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
 
     vscode.commands.executeCommand(
       "setContext",
-      "novelReader.readerActive",
+      "readermate.readerActive",
       false
     );
   }

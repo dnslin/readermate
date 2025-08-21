@@ -1,90 +1,92 @@
 # ReaderMate
 
-A VS Code extension for reading novels with Reader3 server integration.
+基于 Reader3 服务器集成的 VS Code 小说阅读插件。
 
-## Features
+## 功能特性
 
-- **Bookshelf Management**: Browse and manage your novel collection
-- **Reading Interface**: Clean, distraction-free reading experience within VS Code
-- **Chapter Navigation**: Easy navigation between chapters with keyboard shortcuts
-- **Progress Tracking**: Automatic reading progress synchronization
-- **Chapter Preloading**: Smart preloading for seamless reading experience
-- **Server Integration**: Works with Reader3 server for content management
+- **书架管理**: 浏览和管理您的小说收藏
+- **阅读界面**: 在 VS Code 中享受干净、无干扰的阅读体验
+- **章节导航**: 使用键盘快捷键轻松在章节间导航
+- **进度跟踪**: 自动同步阅读进度
+- **章节预加载**: 智能预加载，提供无缝阅读体验
+- **服务器集成**: 与 Reader3 服务器配合进行内容管理
 
-## Installation
+## 安装
 
-1. Install the extension from VS Code Marketplace
-2. Configure your Reader3 server settings
-3. Start reading your favorite novels!
+1. 从 VS Code 扩展市场安装此插件
+2. 配置您的 Reader3 服务器设置
+3. 开始阅读您喜爱的小说！
 
-## Configuration
+## 配置
 
-Open VS Code settings and configure the following:
+打开 VS Code 设置并配置以下选项：
 
-- **Server URL**: Your Reader3 server base URL (e.g., `https://reader.me`)
-- **Username**: Your account username
-- **Access Token**: Your authentication token
-- **Preload Settings**: Customize chapter preloading behavior
+- **服务器 URL**: 您的 Reader3 服务器基础地址（例如：`https://reader.me`）
+- **用户名**: 您的账户用户名
+- **访问令牌**: 您的身份验证令牌
+- **预加载设置**: 自定义章节预加载行为
 
-## Usage
+## 使用方法
 
-### Opening Bookshelf
+### 打开书架
 
-- Use `Ctrl+Shift+L` to open your bookshelf
-- Or click the book icon in the activity bar
-- Or use Command Palette: "ReaderMate: Open Bookshelf"
+- 使用 `Ctrl+Shift+L` 打开您的书架
+- 或点击活动栏中的书本图标
+- 或使用命令面板："ReaderMate: Open Bookshelf"
 
-### Reading
+### 阅读
 
-- Click on any book in your bookshelf to start reading
-- Use `Ctrl+Left` for previous chapter
-- Use `Ctrl+Right` for next chapter
-- Reading progress is automatically saved
+- 点击书架中的任意书籍开始阅读
+- 使用 `Ctrl+Left` 切换到上一章
+- 使用 `Ctrl+Right` 切换到下一章
+- 阅读进度会自动保存
 
-### Preloading
+### 预加载
 
-The extension intelligently preloads upcoming chapters based on your reading progress:
+插件会根据您的阅读进度智能预加载即将到来的章节：
 
-- **Enabled**: Toggle chapter preloading on/off
-- **Chapter Count**: Number of chapters to preload (1-5)
-- **Trigger Progress**: When to start preloading (30%-95% of current chapter)
-- **Cache Size**: Maximum chapters to keep in cache (5-20)
+- **启用**: 开启/关闭章节预加载
+- **章节数量**: 预加载的章节数量（1-5 章）
+- **触发进度**: 何时开始预加载（当前章节的 30%-95%）
+- **缓存大小**: 缓存中保留的最大章节数（5-20 章）
 
-## Commands
+## 命令
 
-| Command | Shortcut | Description |
-|---------|----------|-------------|
-| Open Bookshelf | `Ctrl+Shift+L` | Open your book collection |
-| Previous Chapter | `Ctrl+Left` | Navigate to previous chapter |
-| Next Chapter | `Ctrl+Right` | Navigate to next chapter |
-| Refresh Bookshelf | - | Refresh book list |
+| 命令     | 快捷键         | 描述             |
+| -------- | -------------- | ---------------- |
+| 打开书架 | `Ctrl+Shift+L` | 打开您的书籍收藏 |
+| 上一章   | `Ctrl+Left`    | 导航到上一章     |
+| 下一章   | `Ctrl+Right`   | 导航到下一章     |
+| 刷新书架 | -              | 刷新书籍列表     |
 
-## Requirements
+## 系统要求
 
-- VS Code 1.60.0 or higher
-- Access to a Reader3 server
-- Valid authentication credentials
+- VS Code 1.60.0 或更高版本
+- 可访问的 Reader3 服务器
+- 有效的身份验证凭据
 
-## Known Issues
+## 已知问题
 
-- Large books may take longer to load initially
-- Network connectivity required for content synchronization
+- 大型书籍可能需要较长时间进行初始加载
+- 需要网络连接进行内容同步
 
-## Release Notes
+## 版本说明
 
 ### 1.0.0
 
-Initial release with core reading functionality:
-- Bookshelf management
-- Chapter navigation
-- Progress tracking
-- Chapter preloading
-- Reader3 server integration
+初始版本，包含核心阅读功能：
 
-## Support
+- 书架管理
+- 章节导航
+- 进度跟踪
+- 章节预加载
+- Reader3 服务器集成
 
-For issues and feature requests, please visit our [GitHub repository](https://github.com/user/readermate-vscode).
+## 支持
 
-## License
+如有问题和功能请求，请访问我们的 [GitHub 仓库](https://github.com/dnslin/readermate-vscode)。
 
-This extension is licensed under the MIT License.
+## 许可证
+
+此插件基于 MIT 许可证授权。
+

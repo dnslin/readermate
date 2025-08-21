@@ -59,7 +59,7 @@ class BookItem extends vscode.TreeItem {
     this.iconPath = new vscode.ThemeIcon("book");
 
     this.command = {
-      command: "novelReader.openReader",
+      command: "readermate.openReader",
       title: "阅读",
       arguments: [book],
     };
