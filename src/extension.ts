@@ -5,15 +5,21 @@ import { ReaderProvider } from "./providers/readerProvider";
 
 let apiClient: ReaderApiClient;
 let bookshelfProvider: BookshelfProvider;
+let outputChannel: vscode.OutputChannel;
 
 export function activate(context: vscode.ExtensionContext) {
+  // 创建输出通道
+  outputChannel = vscode.window.createOutputChannel("小说阅读器");
+  context.subscriptions.push(outputChannel);
+
+  outputChannel.appendLine("小说阅读器插件已激活");
   console.log("小说阅读器插件已激活");
 
   // 显示激活消息
   vscode.window.showInformationMessage("小说阅读器插件已激活！");
 
   const config = vscode.workspace.getConfiguration("novelReader");
-  const serverUrl = config.get<string>("serverUrl", "http://localhost:8080");
+  const serverUrl = config.get<string>("serverUrl", "https://reader.kuku.me");
   const username = config.get<string>("username");
   const token = config.get<string>("token");
 
@@ -29,11 +35,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showWarningMessage("请先配置小说阅读器的用户名和访问令牌");
   }
 
-  console.log(`服务器地址: ${serverUrl}`);
-  console.log(`用户名: ${username}`);
-  console.log(`访问令牌: ${accessToken ? "已配置" : "未配置"}`);
+  outputChannel.appendLine(`服务器地址: ${serverUrl}`);
+  outputChannel.appendLine(`用户名: ${username}`);
+  outputChannel.appendLine(`访问令牌: ${accessToken ? "已配置" : "未配置"}`);
 
-  apiClient = new ReaderApiClient(serverUrl, accessToken);
+  apiClient = new ReaderApiClient(serverUrl, accessToken, outputChannel);
 
   bookshelfProvider = new BookshelfProvider(apiClient);
   vscode.window.createTreeView("novelBookshelf", {
@@ -92,7 +98,7 @@ export function activate(context: vscode.ExtensionContext) {
       const newAccessToken =
         newUsername && newToken ? `${newUsername}:${newToken}` : undefined;
 
-      apiClient = new ReaderApiClient(newUrl, newAccessToken);
+      apiClient = new ReaderApiClient(newUrl, newAccessToken, outputChannel);
       bookshelfProvider = new BookshelfProvider(apiClient);
     }
   });

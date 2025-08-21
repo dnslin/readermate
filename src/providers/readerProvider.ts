@@ -132,13 +132,16 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
   }
 
   private async loadCurrentChapter() {
-    if (!this.chapters[this.currentChapterIndex]) {
+    if (!this.chapters[this.currentChapterIndex] || !this.currentBook) {
       return;
     }
 
     try {
       const chapter = this.chapters[this.currentChapterIndex];
-      const content = await this.apiClient.getBookContent(chapter.url);
+      const content = await this.apiClient.getBookContent(
+        this.currentBook.bookUrl,
+        this.currentChapterIndex
+      );
 
       this._panel.webview.postMessage({
         command: "updateChapter",

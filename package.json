@@ -105,8 +105,8 @@
       "properties": {
         "novelReader.serverUrl": {
           "type": "string",
-          "default": "http://localhost:8080",
-          "description": "阅读服务器地址"
+          "default": "https://reader.kuku.me",
+          "description": "阅读服务器地址（不包含 /reader3 路径）"
         },
         "novelReader.username": {
           "type": "string",
