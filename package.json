@@ -7,10 +7,22 @@
   "engines": {
     "vscode": "^1.60.0"
   },
-  "categories": ["Other"],
-  "keywords": ["novel", "reader", "book", "阅读", "小说"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "novel",
+    "reader",
+    "book",
+    "阅读",
+    "小说"
+  ],
   "activationEvents": [],
   "main": "./out/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/novel-reader-vscode.git"
+  },
   "contributes": {
     "commands": [
       {
@@ -97,6 +109,10 @@
         "novelReader.username": {
           "type": "string",
           "description": "用户名"
+        },
+        "novelReader.token": {
+          "type": "string",
+          "description": "访问令牌"
         },
         "novelReader.pageSize": {
           "type": "number",

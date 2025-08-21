@@ -5,17 +5,21 @@ import { Book, Chapter, BookContent } from "./types";
 
 export class ReaderApiClient {
   private baseUrl: string;
-  private username?: string;
-  private password?: string;
+  private accessToken?: string;
 
-  constructor(baseUrl: string, username?: string, password?: string) {
+  constructor(baseUrl: string, accessToken?: string) {
     this.baseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-    this.username = username;
-    this.password = password;
+    this.accessToken = accessToken;
   }
 
   private async request(path: string, options: any = {}): Promise<any> {
     const url = new URL(`${this.baseUrl}/reader3${path}`);
+
+    // 添加 accessToken 参数
+    if (this.accessToken) {
+      url.searchParams.set("accessToken", this.accessToken);
+      url.searchParams.set("v", Date.now().toString());
+    }
 
     return new Promise((resolve, reject) => {
       const client = url.protocol === "https:" ? https : http;
@@ -90,3 +94,4 @@ export class ReaderApiClient {
     });
   }
 }
+

@@ -12,8 +12,12 @@ export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration("novelReader");
   const serverUrl = config.get<string>("serverUrl", "http://localhost:8080");
   const username = config.get<string>("username");
+  const token = config.get<string>("token");
 
-  apiClient = new ReaderApiClient(serverUrl, username);
+  // 构建 accessToken，格式为 username:token
+  const accessToken = username && token ? `${username}:${token}` : undefined;
+
+  apiClient = new ReaderApiClient(serverUrl, accessToken);
 
   bookshelfProvider = new BookshelfProvider(apiClient);
   vscode.window.createTreeView("novelBookshelf", {
@@ -57,11 +61,21 @@ export function activate(context: vscode.ExtensionContext) {
   vscode.commands.executeCommand("setContext", "novelReader.enabled", true);
 
   vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration("novelReader.serverUrl")) {
-      const newUrl = vscode.workspace
-        .getConfiguration("novelReader")
-        .get<string>("serverUrl", "");
-      apiClient = new ReaderApiClient(newUrl, username);
+    if (
+      e.affectsConfiguration("novelReader.serverUrl") ||
+      e.affectsConfiguration("novelReader.username") ||
+      e.affectsConfiguration("novelReader.token")
+    ) {
+      const config = vscode.workspace.getConfiguration("novelReader");
+      const newUrl = config.get<string>("serverUrl", "");
+      const newUsername = config.get<string>("username");
+      const newToken = config.get<string>("token");
+
+      // 构建新的 accessToken
+      const newAccessToken =
+        newUsername && newToken ? `${newUsername}:${newToken}` : undefined;
+
+      apiClient = new ReaderApiClient(newUrl, newAccessToken);
       bookshelfProvider = new BookshelfProvider(apiClient);
     }
   });
@@ -72,3 +86,4 @@ export function deactivate() {
     ReaderProvider.currentPanel.dispose();
   }
 }
+

@@ -1,5 +1,4 @@
 **/node_modules
-**/out/**
 **/.vscode-test/**
 **/test/**
 src/**/*.map
@@ -11,4 +10,6 @@ README.md
 tsconfig.json
 tslint.json
 **/*.map
-**/*.ts
+src/**/*.ts
+pnpm-lock.yaml
+doc.md
