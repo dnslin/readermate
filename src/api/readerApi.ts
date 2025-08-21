@@ -42,6 +42,19 @@ export class ReaderApiClient {
       this.outputChannel.appendLine(logMessage);
     }
 
+    // 添加POST数据调试信息
+    if (options.method === "POST" && options.data) {
+      const postDataMessage = `POST数据: ${JSON.stringify(
+        options.data,
+        null,
+        2
+      )}`;
+      console.log(postDataMessage);
+      if (this.outputChannel) {
+        this.outputChannel.appendLine(postDataMessage);
+      }
+    }
+
     return new Promise((resolve, reject) => {
       const client = url.protocol === "https:" ? https : http;
       const req = client.request(
@@ -124,19 +137,69 @@ export class ReaderApiClient {
     bookUrl: string,
     chapterIndex: number
   ): Promise<BookContent> {
-    return this.request(
+    const result = await this.request(
       `/getBookContent?url=${encodeURIComponent(bookUrl)}&index=${chapterIndex}`
     );
+
+    const logMessage = `getBookContent API原始响应: ${JSON.stringify(
+      result,
+      null,
+      2
+    )}`;
+    console.log(logMessage);
+    if (this.outputChannel) {
+      this.outputChannel.appendLine(logMessage);
+    }
+
+    // API返回的可能是字符串内容或对象，需要转换为BookContent格式
+    let contentText = "";
+    if (typeof result === "string") {
+      contentText = result;
+    } else if (result && typeof result === "object") {
+      contentText = result.content || result.text || "";
+    }
+
+    const bookContent: BookContent = {
+      title: `第${chapterIndex + 1}章`, // 使用章节索引生成标题
+      content: contentText,
+      nextUrl: undefined,
+      prevUrl: undefined,
+    };
+
+    console.log(
+      `转换后的BookContent: title="${bookContent.title}", content长度=${bookContent.content.length}`
+    );
+
+    return bookContent;
   }
 
-  async saveProgress(
-    bookUrl: string,
-    chapterUrl: string,
-    progress: number
+  async saveBookProgress(
+    name: string,
+    author: string,
+    durChapterIndex: number,
+    durChapterPos: number,
+    durChapterTime: number,
+    durChapterTitle?: string
   ): Promise<void> {
+    const progressData = {
+      name,
+      author,
+      durChapterIndex,
+      durChapterPos,
+      durChapterTime,
+      durChapterTitle,
+    };
+
+    console.log(`保存阅读进度: ${JSON.stringify(progressData, null, 2)}`);
+    if (this.outputChannel) {
+      this.outputChannel.appendLine(
+        `保存阅读进度: ${JSON.stringify(progressData, null, 2)}`
+      );
+    }
+
     return this.request("/saveBookProgress", {
       method: "POST",
-      data: { bookUrl, chapterUrl, progress },
+      data: progressData,
     });
   }
 }
