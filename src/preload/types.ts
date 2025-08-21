@@ -10,8 +10,6 @@ export interface PreloadConfig {
   chapterCount: number;
   /** 触发预加载的阅读进度百分比 */
   triggerProgress: number;
-  /** 是否仅在WiFi环境下预加载 */
-  wifiOnly: boolean;
   /** 最大缓存章节数量 */
   maxCacheSize: number;
 }
@@ -27,7 +25,7 @@ export enum PreloadStatus {
   /** 预加载完成 */
   COMPLETED = "completed",
   /** 预加载失败 */
-  FAILED = "failed"
+  FAILED = "failed",
 }
 
 /**
@@ -85,3 +83,4 @@ export interface ReadingProgressEvent {
   /** 总章节数 */
   totalChapters: number;
 }
+

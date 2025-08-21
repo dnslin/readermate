@@ -28,8 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
   const preloadConfig: PreloadConfig = {
     enabled: config.get<boolean>("preload.enabled", true),
     chapterCount: config.get<number>("preload.chapterCount", 2),
-    triggerProgress: config.get<number>("preload.triggerProgress", 80),
-    wifiOnly: config.get<boolean>("preload.wifiOnly", false),
+    triggerProgress: config.get<number>("preload.triggerProgress", 50),
     maxCacheSize: config.get<number>("preload.maxCacheSize", 10),
   };
 
@@ -129,15 +128,13 @@ export function activate(context: vscode.ExtensionContext) {
       e.affectsConfiguration("novelReader.preload.enabled") ||
       e.affectsConfiguration("novelReader.preload.chapterCount") ||
       e.affectsConfiguration("novelReader.preload.triggerProgress") ||
-      e.affectsConfiguration("novelReader.preload.wifiOnly") ||
       e.affectsConfiguration("novelReader.preload.maxCacheSize")
     ) {
       const config = vscode.workspace.getConfiguration("novelReader");
       const newPreloadConfig: PreloadConfig = {
         enabled: config.get<boolean>("preload.enabled", true),
         chapterCount: config.get<number>("preload.chapterCount", 2),
-        triggerProgress: config.get<number>("preload.triggerProgress", 80),
-        wifiOnly: config.get<boolean>("preload.wifiOnly", false),
+        triggerProgress: config.get<number>("preload.triggerProgress", 50),
         maxCacheSize: config.get<number>("preload.maxCacheSize", 10),
       };
 

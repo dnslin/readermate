@@ -82,8 +82,7 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     const defaultConfig: PreloadConfig = {
       enabled: true,
       chapterCount: 2,
-      triggerProgress: 80,
-      wifiOnly: false,
+      triggerProgress: 50,
       maxCacheSize: 10,
     };
     this.preloadManager = new PreloadManager(

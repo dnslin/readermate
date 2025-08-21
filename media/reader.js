@@ -8,14 +8,6 @@
   const chapterTitle = document.getElementById("chapter-title");
   const chapterContent = document.getElementById("chapter-content");
 
-  // 阅读进度跟踪变量
-  let lastReportedProgress = 0;
-  const PROGRESS_REPORT_THRESHOLD = 5; // 每5%报告一次
-
-  // 阅读进度跟踪变量
-  let lastReportedProgress = 0;
-  const PROGRESS_REPORT_THRESHOLD = 5; // 每5%报告一次
-
   prevBtn.addEventListener("click", () => {
     vscode.postMessage({ command: "prevChapter" });
   });
@@ -81,6 +73,7 @@
     if (!contentArea.hasAttribute('data-scroll-listener')) {
       contentArea.addEventListener('scroll', throttle(trackReadingProgress, 500));
       contentArea.setAttribute('data-scroll-listener', 'true');
+      console.log('[滚动调试] 已添加滚动监听器');
     }
 
     console.log("章节更新完成");
@@ -94,28 +87,38 @@
     const content = document.getElementById('chapter-content');
 
     if (!contentArea || !content) {
+      console.log('[滚动调试] 未找到内容区域或章节内容元素');
       return;
     }
 
     const scrollTop = contentArea.scrollTop;
-    const scrollHeight = contentArea.scrollHeight - contentArea.clientHeight;
+    const scrollHeight = contentArea.scrollHeight;
+    const clientHeight = contentArea.clientHeight;
+    const maxScrollTop = scrollHeight - clientHeight;
+
+    console.log(`[滚动调试] scrollTop: ${scrollTop}, scrollHeight: ${scrollHeight}, clientHeight: ${clientHeight}, maxScrollTop: ${maxScrollTop}`);
 
     // 避免除零错误
-    if (scrollHeight <= 0) {
+    if (maxScrollTop <= 0) {
+      console.log('[滚动调试] maxScrollTop <= 0，无法计算进度');
       return;
     }
 
-    const progress = Math.min(Math.round((scrollTop / scrollHeight) * 100), 100);
+    const progress = Math.min(Math.round((scrollTop / maxScrollTop) * 100), 100);
+
+    console.log(`[滚动调试] 计算进度: ${scrollTop} / ${maxScrollTop} * 100 = ${progress}%`);
 
     // 只有当进度变化超过阈值时才报告
     if (Math.abs(progress - lastReportedProgress) >= PROGRESS_REPORT_THRESHOLD) {
       lastReportedProgress = progress;
-      console.log(`阅读进度: ${progress}%`);
+      console.log(`[滚动调试] 阅读进度更新: ${progress}% (上次报告: ${lastReportedProgress - (progress - lastReportedProgress)}%)`);
 
       vscode.postMessage({
         command: 'readingProgress',
         progress: progress
       });
+    } else {
+      console.log(`[滚动调试] 进度变化不足阈值: ${Math.abs(progress - lastReportedProgress)}% < ${PROGRESS_REPORT_THRESHOLD}%`);
     }
   }
 
