@@ -14,13 +14,21 @@ export class ReaderApiClient {
     accessToken?: string,
     outputChannel?: vscode.OutputChannel
   ) {
-    this.baseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+    // 确保baseUrl以斜杠结尾，并自动添加reader3路径
+    let normalizedUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
+    // 如果URL不包含reader3路径，则自动添加
+    if (!normalizedUrl.includes("/reader3/")) {
+      normalizedUrl = normalizedUrl + "reader3/";
+    }
+    this.baseUrl = normalizedUrl;
     this.accessToken = accessToken;
     this.outputChannel = outputChannel;
   }
 
   private async request(path: string, options: any = {}): Promise<any> {
-    const url = new URL(`${this.baseUrl}${path}`);
+    // 使用URL构造函数正确拼接路径，path应该以斜杠开头
+    const apiPath = path.startsWith("/") ? path.substring(1) : path;
+    const url = new URL(apiPath, this.baseUrl);
 
     // 添加 accessToken 参数
     if (this.accessToken) {
@@ -132,4 +140,3 @@ export class ReaderApiClient {
     });
   }
 }
-

@@ -106,7 +106,7 @@
         "novelReader.serverUrl": {
           "type": "string",
           "default": "https://reader.kuku.me",
-          "description": "阅读服务器地址（不包含 /reader3 路径）"
+          "description": "阅读服务器基础地址（插件会自动添加 /reader3 路径）"
         },
         "novelReader.username": {
           "type": "string",
@@ -128,6 +128,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package --allow-star-activation",
+    "build": "pnpm run compile && pnpm run package",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js"
