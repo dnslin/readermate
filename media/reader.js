@@ -8,6 +8,14 @@
   const chapterTitle = document.getElementById("chapter-title");
   const chapterContent = document.getElementById("chapter-content");
 
+  // 阅读进度跟踪变量
+  let lastReportedProgress = 0;
+  const PROGRESS_REPORT_THRESHOLD = 5; // 每5%报告一次
+
+  // 阅读进度跟踪变量
+  let lastReportedProgress = 0;
+  const PROGRESS_REPORT_THRESHOLD = 5; // 每5%报告一次
+
   prevBtn.addEventListener("click", () => {
     vscode.postMessage({ command: "prevChapter" });
   });
@@ -63,8 +71,84 @@
     prevBtn.disabled = !data.hasPrev;
     nextBtn.disabled = !data.hasNext;
 
-    document.querySelector(".content-area").scrollTop = 0;
+    const contentArea = document.querySelector(".content-area");
+    contentArea.scrollTop = 0;
+
+    // 重置阅读进度跟踪
+    lastReportedProgress = 0;
+
+    // 添加滚动监听器（如果还没有添加）
+    if (!contentArea.hasAttribute('data-scroll-listener')) {
+      contentArea.addEventListener('scroll', throttle(trackReadingProgress, 500));
+      contentArea.setAttribute('data-scroll-listener', 'true');
+    }
+
     console.log("章节更新完成");
+  }
+
+  /**
+   * 跟踪阅读进度
+   */
+  function trackReadingProgress() {
+    const contentArea = document.querySelector('.content-area');
+    const content = document.getElementById('chapter-content');
+
+    if (!contentArea || !content) {
+      return;
+    }
+
+    const scrollTop = contentArea.scrollTop;
+    const scrollHeight = contentArea.scrollHeight - contentArea.clientHeight;
+
+    // 避免除零错误
+    if (scrollHeight <= 0) {
+      return;
+    }
+
+    const progress = Math.min(Math.round((scrollTop / scrollHeight) * 100), 100);
+
+    // 只有当进度变化超过阈值时才报告
+    if (Math.abs(progress - lastReportedProgress) >= PROGRESS_REPORT_THRESHOLD) {
+      lastReportedProgress = progress;
+      console.log(`阅读进度: ${progress}%`);
+
+      vscode.postMessage({
+        command: 'readingProgress',
+        progress: progress
+      });
+    }
+  }
+
+  /**
+   * 节流函数
+   * @param {Function} func 要节流的函数
+   * @param {number} delay 延迟时间（毫秒）
+   * @returns {Function} 节流后的函数
+   */
+  function throttle(func, delay) {
+    let lastCall = 0;
+    let timeoutId = null;
+
+    return function (...args) {
+      const now = Date.now();
+
+      if (now - lastCall >= delay) {
+        // 立即执行
+        lastCall = now;
+        func.apply(this, args);
+      } else {
+        // 延迟执行
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+
+        timeoutId = setTimeout(() => {
+          lastCall = Date.now();
+          func.apply(this, args);
+          timeoutId = null;
+        }, delay - (now - lastCall));
+      }
+    };
   }
 
   function formatContent(content) {

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ReaderApiClient } from "./api/readerApi";
 import { BookshelfProvider } from "./providers/bookshelfProvider";
 import { ReaderProvider } from "./providers/readerProvider";
+import { PreloadConfig } from "./preload/types";
 
 let apiClient: ReaderApiClient;
 let bookshelfProvider: BookshelfProvider;
@@ -22,6 +23,15 @@ export function activate(context: vscode.ExtensionContext) {
   const serverUrl = config.get<string>("serverUrl", "https://reader.kuku.me");
   const username = config.get<string>("username");
   const token = config.get<string>("token");
+
+  // 读取预加载配置
+  const preloadConfig: PreloadConfig = {
+    enabled: config.get<boolean>("preload.enabled", true),
+    chapterCount: config.get<number>("preload.chapterCount", 2),
+    triggerProgress: config.get<number>("preload.triggerProgress", 80),
+    wifiOnly: config.get<boolean>("preload.wifiOnly", false),
+    maxCacheSize: config.get<number>("preload.maxCacheSize", 10),
+  };
 
   // 构建 accessToken，格式为 username:token
   const accessToken = username && token ? `${username}:${token}` : undefined;
@@ -58,6 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
         context.extensionUri,
         apiClient,
         bookshelfProvider,
+        preloadConfig,
         book
       );
     }),
@@ -80,7 +91,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.window.registerWebviewPanelSerializer(
       "novelReader",
-      new ReaderProvider({} as any, context.extensionUri, apiClient)
+      new ReaderProvider(
+        {} as any,
+        context.extensionUri,
+        apiClient,
+        undefined,
+        preloadConfig
+      )
     ),
   ];
 
@@ -105,6 +122,31 @@ export function activate(context: vscode.ExtensionContext) {
 
       apiClient = new ReaderApiClient(newUrl, newAccessToken, outputChannel);
       bookshelfProvider = new BookshelfProvider(apiClient);
+    }
+
+    // 处理预加载配置变更
+    if (
+      e.affectsConfiguration("novelReader.preload.enabled") ||
+      e.affectsConfiguration("novelReader.preload.chapterCount") ||
+      e.affectsConfiguration("novelReader.preload.triggerProgress") ||
+      e.affectsConfiguration("novelReader.preload.wifiOnly") ||
+      e.affectsConfiguration("novelReader.preload.maxCacheSize")
+    ) {
+      const config = vscode.workspace.getConfiguration("novelReader");
+      const newPreloadConfig: PreloadConfig = {
+        enabled: config.get<boolean>("preload.enabled", true),
+        chapterCount: config.get<number>("preload.chapterCount", 2),
+        triggerProgress: config.get<number>("preload.triggerProgress", 80),
+        wifiOnly: config.get<boolean>("preload.wifiOnly", false),
+        maxCacheSize: config.get<number>("preload.maxCacheSize", 10),
+      };
+
+      // 通知当前活动的阅读器更新预加载配置
+      if (ReaderProvider.currentPanel) {
+        ReaderProvider.currentPanel.updatePreloadConfig(newPreloadConfig);
+      }
+
+      console.log("[Extension] 预加载配置已更新:", newPreloadConfig);
     }
   });
 }

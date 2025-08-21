@@ -120,6 +120,37 @@
           "type": "number",
           "default": 20,
           "description": "每页章节数"
+        },
+        "novelReader.preload.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用章节预加载功能"
+        },
+        "novelReader.preload.chapterCount": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 5,
+          "description": "预加载章节数量（1-5章）"
+        },
+        "novelReader.preload.triggerProgress": {
+          "type": "number",
+          "default": 80,
+          "minimum": 50,
+          "maximum": 95,
+          "description": "触发预加载的阅读进度百分比（50%-95%）"
+        },
+        "novelReader.preload.wifiOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "仅在WiFi环境下预加载（VS Code环境下此选项意义有限）"
+        },
+        "novelReader.preload.maxCacheSize": {
+          "type": "number",
+          "default": 10,
+          "minimum": 5,
+          "maximum": 20,
+          "description": "最大缓存章节数量（5-20章）"
         }
       }
     }

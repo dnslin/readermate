@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { ReaderApiClient } from "../api/readerApi";
 import { Book, Chapter, BookContent } from "../api/types";
 import { BookshelfProvider } from "./bookshelfProvider";
+import { PreloadManager } from "../preload/preloadManager";
+import { PreloadConfig, ReadingProgressEvent } from "../preload/types";
 
 export class ReaderProvider implements vscode.WebviewPanelSerializer {
   public static currentPanel: ReaderProvider | undefined;
@@ -16,11 +18,13 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
   private currentChapterIndex = 0;
   private apiClient: ReaderApiClient;
   private bookshelfProvider?: BookshelfProvider;
+  private preloadManager: PreloadManager;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
     apiClient: ReaderApiClient,
     bookshelfProvider: BookshelfProvider,
+    preloadConfig: PreloadConfig,
     book?: Book
   ) {
     const column = vscode.window.activeTextEditor
@@ -53,7 +57,8 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
       panel,
       extensionUri,
       apiClient,
-      bookshelfProvider
+      bookshelfProvider,
+      preloadConfig
     );
 
     if (book) {
@@ -65,12 +70,26 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     apiClient: ReaderApiClient,
-    bookshelfProvider?: BookshelfProvider
+    bookshelfProvider?: BookshelfProvider,
+    preloadConfig?: PreloadConfig
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
     this.apiClient = apiClient;
     this.bookshelfProvider = bookshelfProvider;
+
+    // 初始化预加载管理器
+    const defaultConfig: PreloadConfig = {
+      enabled: true,
+      chapterCount: 2,
+      triggerProgress: 80,
+      wifiOnly: false,
+      maxCacheSize: 10,
+    };
+    this.preloadManager = new PreloadManager(
+      apiClient,
+      preloadConfig || defaultConfig
+    );
 
     this._update();
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -82,32 +101,45 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     );
   }
 
+  /**
+   * 更新预加载配置
+   */
+  public updatePreloadConfig(config: PreloadConfig): void {
+    this.preloadManager.updateConfig(config);
+    console.log("[ReaderProvider] 预加载配置已更新");
+  }
+
+  /**
+   * 处理阅读进度更新
+   */
+  private handleReadingProgress(progress: number): void {
+    if (!this.currentBook || this.chapters.length === 0) {
+      return;
+    }
+
+    const event: ReadingProgressEvent = {
+      chapterIndex: this.currentChapterIndex,
+      progress: progress,
+      totalChapters: this.chapters.length,
+    };
+
+    this.preloadManager.onReadingProgress(event);
+    console.log(
+      `[ReaderProvider] 阅读进度更新: 第${
+        this.currentChapterIndex + 1
+      }章 ${progress}%`
+    );
+  }
+
   public async deserializeWebviewPanel(
     webviewPanel: vscode.WebviewPanel,
-    state: any
+    _state: any
   ): Promise<void> {
     ReaderProvider.currentPanel = new ReaderProvider(
       webviewPanel,
       this._extensionUri,
       this.apiClient
     );
-  }
-
-  public dispose() {
-    ReaderProvider.currentPanel = undefined;
-    vscode.commands.executeCommand(
-      "setContext",
-      "novelReader.readerActive",
-      false
-    );
-
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const x = this._disposables.pop();
-      if (x) {
-        x.dispose();
-      }
-    }
   }
 
   public async openBook(book: Book) {
@@ -132,6 +164,9 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
       }
 
       await this.loadCurrentChapter();
+
+      // 设置预加载管理器的当前书籍信息
+      this.preloadManager.setCurrentBook(book.bookUrl, this.chapters.length);
     } catch (error) {
       console.error(`加载章节失败:`, error);
       vscode.window.showErrorMessage(`加载章节失败: ${error}`);
@@ -198,7 +233,8 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         `准备加载章节: ${chapter.title}, 索引: ${this.currentChapterIndex}`
       );
 
-      const content = await this.apiClient.getBookContent(
+      // 优先从预加载缓存获取章节内容
+      const content = await this.preloadManager.getChapterContent(
         this.currentBook.bookUrl,
         this.currentChapterIndex
       );
@@ -263,6 +299,9 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
           case "nextChapter":
             this.nextChapter();
             break;
+          case "readingProgress":
+            this.handleReadingProgress(message.progress);
+            break;
           case "ready":
             console.log("WebView已准备就绪");
             break;
@@ -304,5 +343,27 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         <script src="${scriptUri}"></script>
       </body>
       </html>`;
+  }
+
+  public dispose() {
+    ReaderProvider.currentPanel = undefined;
+
+    // 清理预加载管理器资源
+    this.preloadManager.dispose();
+
+    this._panel.dispose();
+
+    while (this._disposables.length) {
+      const x = this._disposables.pop();
+      if (x) {
+        x.dispose();
+      }
+    }
+
+    vscode.commands.executeCommand(
+      "setContext",
+      "novelReader.readerActive",
+      false
+    );
   }
 }
