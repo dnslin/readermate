@@ -109,6 +109,27 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
   }
 
   /**
+   * 更新API客户端
+   */
+  public updateApiClient(apiClient: ReaderApiClient): void {
+    console.log("[ReaderProvider] 开始更新API客户端");
+    this.apiClient = apiClient;
+
+    // 更新预加载管理器的API客户端
+    this.preloadManager.updateApiClient(apiClient);
+
+    console.log("[ReaderProvider] API客户端已更新");
+  }
+
+  /**
+   * 更新书架提供者
+   */
+  public updateBookshelfProvider(bookshelfProvider: BookshelfProvider): void {
+    console.log("[ReaderProvider] 更新书架提供者");
+    this.bookshelfProvider = bookshelfProvider;
+  }
+
+  /**
    * 处理阅读进度更新
    */
   private handleReadingProgress(progress: number): void {
@@ -325,17 +346,15 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${styleUri}" rel="stylesheet">
-        <title>小说阅读器</title>
+        <title>ReaderMate</title>
       </head>
       <body>
         <div class="reader-container">
           <div class="toolbar">
             <button id="prev-btn" class="nav-btn" disabled>上一章</button>
-            <span id="chapter-info">选择章节</span>
             <button id="next-btn" class="nav-btn" disabled>下一章</button>
           </div>
           <div class="content-area">
-            <h1 id="chapter-title">请选择要阅读的书籍</h1>
             <div id="chapter-content" class="content"></div>
           </div>
         </div>

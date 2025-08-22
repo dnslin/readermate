@@ -53,6 +53,22 @@ export class PreloadManager {
   }
 
   /**
+   * 更新API客户端
+   */
+  updateApiClient(apiClient: ReaderApiClient): void {
+    console.log("[PreloadManager] 开始更新API客户端");
+    this.apiClient = apiClient;
+
+    // 清空当前的预加载队列，因为API客户端已变更
+    this.clearPreloadQueue();
+
+    // 清空缓存，因为可能连接到不同的服务器
+    this.cache.clear();
+
+    console.log("[PreloadManager] API客户端已更新，缓存和队列已清空");
+  }
+
+  /**
    * 设置当前书籍信息
    */
   setCurrentBook(bookUrl: string, totalChapters: number): void {

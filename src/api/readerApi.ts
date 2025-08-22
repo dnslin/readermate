@@ -24,6 +24,13 @@ export class ReaderApiClient {
     this.baseUrl = normalizedUrl;
     this.accessToken = accessToken;
     this.outputChannel = outputChannel;
+
+    console.log(`[ReaderApiClient] 创建API客户端，baseUrl: ${this.baseUrl}`);
+    if (this.outputChannel) {
+      this.outputChannel.appendLine(
+        `[ReaderApiClient] 创建API客户端，baseUrl: ${this.baseUrl}`
+      );
+    }
   }
 
   private async request(path: string, options: any = {}): Promise<any> {

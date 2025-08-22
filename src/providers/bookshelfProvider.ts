@@ -22,6 +22,17 @@ export class BookshelfProvider implements vscode.TreeDataProvider<BookItem> {
     this.loadBooks();
   }
 
+  /**
+   * 更新API客户端
+   */
+  updateApiClient(apiClient: ReaderApiClient): void {
+    console.log("[BookshelfProvider] 开始更新API客户端");
+    this.apiClient = apiClient;
+    // 更新API客户端后重新加载书籍列表
+    this.loadBooks();
+    console.log("[BookshelfProvider] API客户端已更新，重新加载书籍列表");
+  }
+
   getTreeItem(element: BookItem): vscode.TreeItem {
     return element;
   }
@@ -35,9 +46,14 @@ export class BookshelfProvider implements vscode.TreeDataProvider<BookItem> {
 
   private async loadBooks() {
     try {
+      console.log("[BookshelfProvider] 开始加载书架，使用API客户端");
       this.books = await this.apiClient.getBookshelf();
       this._onDidChangeTreeData.fire();
+      console.log(
+        `[BookshelfProvider] 书架加载成功，共 ${this.books.length} 本书`
+      );
     } catch (error) {
+      console.error("[BookshelfProvider] 加载书架失败:", error);
       vscode.window.showErrorMessage(`加载书架失败: ${error}`);
     }
   }
