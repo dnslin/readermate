@@ -114,7 +114,12 @@ body.stealth .toolbar {
 }
 
 body.stealth #chapter-title {
-  display: none;
+  text-align: left;
+  margin: 0 0 8px 0;
+  font-family: var(--vscode-editor-font-family, Consolas, "Courier New", monospace);
+  font-size: var(--reader-font-size);
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
 }
 
 body.stealth .content-area {
