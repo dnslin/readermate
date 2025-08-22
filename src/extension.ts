@@ -3,6 +3,8 @@ import { ReaderApiClient } from "./api/readerApi";
 import { BookshelfProvider } from "./providers/bookshelfProvider";
 import { ReaderProvider } from "./providers/readerProvider";
 import { PreloadConfig } from "./preload/types";
+import { logger } from "./utils/logger";
+import { showInfo } from "./utils/messages";
 
 let apiClient: ReaderApiClient;
 let bookshelfProvider: BookshelfProvider;
@@ -12,12 +14,12 @@ export function activate(context: vscode.ExtensionContext) {
   // 创建输出通道
   outputChannel = vscode.window.createOutputChannel("ReaderMate");
   context.subscriptions.push(outputChannel);
-
-  outputChannel.appendLine("ReaderMate插件已激活");
-  console.log("ReaderMate插件已激活");
+  // 初始化统一日志
+  logger.init(outputChannel, "info");
+  logger.info("插件已激活", "Extension");
 
   // 显示激活消息
-  vscode.window.showInformationMessage("ReaderMate插件已激活！");
+  showInfo("ReaderMate 插件已激活！");
 
   const config = vscode.workspace.getConfiguration("readermate");
   const serverUrl = config.get<string>("serverUrl", "https://reader.me");
@@ -45,9 +47,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.showWarningMessage("请先配置ReaderMate的用户名和访问令牌");
   }
 
-  outputChannel.appendLine(`服务器地址: ${serverUrl}`);
-  outputChannel.appendLine(`用户名: ${username}`);
-  outputChannel.appendLine(`访问令牌: ${accessToken ? "已配置" : "未配置"}`);
+  logger.info(`服务器地址: ${serverUrl}`, "Extension");
+  logger.info(`用户名: ${username}`, "Extension");
+  logger.info(`访问令牌: ${accessToken ? "已配置" : "未配置"}`, "Extension");
 
   apiClient = new ReaderApiClient(
     serverUrl,
@@ -64,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const commands = [
     vscode.commands.registerCommand("readermate.openBookshelf", () => {
-      console.log("执行打开书架命令");
+      logger.info("执行打开书架命令", "Extension");
       // 聚焦到 Readermate 的书架视图
       vscode.commands.executeCommand("readermateBookshelf.focus");
     }),
@@ -103,20 +105,20 @@ export function activate(context: vscode.ExtensionContext) {
       const maskedToken = token ? "***" : "(not set)";
       const accessTokenState = username && token ? "set" : "not set";
 
-      outputChannel.appendLine("[ReaderMate] ===== Current Effective Config =====");
-      outputChannel.appendLine(`serverUrl: ${serverUrl}`);
-      outputChannel.appendLine(`appendReader3Path: ${appendReader3Path}`);
-      outputChannel.appendLine(`computedBaseUrl: ${normalizedUrl}`);
-      outputChannel.appendLine(`username: ${username ?? "(not set)"}`);
-      outputChannel.appendLine(`token: ${maskedToken}`);
-      outputChannel.appendLine(`accessToken(computed): ${accessTokenState}`);
-      outputChannel.appendLine(
-        `preload: enabled=${preloadEnabled}, chapterCount=${preloadChapterCount}, triggerProgress=${preloadTriggerProgress}, maxCacheSize=${preloadMaxCacheSize}`
+      logger.info("===== Current Effective Config =====", "Extension");
+      logger.info(`serverUrl: ${serverUrl}`, "Extension");
+      logger.info(`appendReader3Path: ${appendReader3Path}`, "Extension");
+      logger.info(`computedBaseUrl: ${normalizedUrl}`, "Extension");
+      logger.info(`username: ${username ?? "(not set)"}`, "Extension");
+      logger.info(`token: ${maskedToken}`, "Extension");
+      logger.info(`accessToken(computed): ${accessTokenState}`, "Extension");
+      logger.info(
+        `preload: enabled=${preloadEnabled}, chapterCount=${preloadChapterCount}, triggerProgress=${preloadTriggerProgress}, maxCacheSize=${preloadMaxCacheSize}`,
+        "Extension"
       );
-      outputChannel.appendLine("[ReaderMate] =====================================");
+      logger.info("=====================================", "Extension");
       outputChannel.show(true);
-
-      vscode.window.showInformationMessage("ReaderMate: 配置已输出到面板");
+      showInfo("ReaderMate：配置已输出到输出面板");
     }),
 
     vscode.commands.registerCommand("readermate.refreshBookshelf", () => {
@@ -168,8 +170,7 @@ export function activate(context: vscode.ExtensionContext) {
   vscode.commands.executeCommand("setContext", "readermate.enabled", true);
 
   const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
-    console.log("[Extension] 配置变更事件触发");
-    outputChannel.appendLine("[Extension] 配置变更事件触发");
+    logger.info("配置变更事件触发", "Extension");
 
     // 检查API相关配置变更
     const apiConfigChanged =
@@ -179,8 +180,7 @@ export function activate(context: vscode.ExtensionContext) {
       e.affectsConfiguration("readermate.appendReader3Path");
 
     if (apiConfigChanged) {
-      console.log("[Extension] 检测到API相关配置变更");
-      outputChannel.appendLine("[Extension] 检测到API相关配置变更");
+      logger.info("检测到API相关配置变更", "Extension");
 
       const config = vscode.workspace.getConfiguration("readermate");
       const newUrl = config.get<string>("serverUrl", "");
@@ -191,24 +191,18 @@ export function activate(context: vscode.ExtensionContext) {
         true
       );
 
-      console.log("[Extension] 新配置值:", {
-        serverUrl: newUrl,
-        username: newUsername,
-        token: newToken ? "***已设置***" : "未设置",
-        appendReader3Path: newAppendReader3Path,
-      });
-      outputChannel.appendLine(
-        `[Extension] 新配置值: serverUrl=${newUrl}, username=${newUsername}, token=${
+      logger.info(
+        `新配置值: serverUrl=${newUrl}, username=${newUsername}, token=${
           newToken ? "***已设置***" : "未设置"
-        }, appendReader3Path=${newAppendReader3Path}`
+        }, appendReader3Path=${newAppendReader3Path}`,
+        "Extension"
       );
 
       // 构建新的 accessToken
       const newAccessToken =
         newUsername && newToken ? `${newUsername}:${newToken}` : undefined;
 
-      console.log("[Extension] 重新创建API客户端");
-      outputChannel.appendLine("[Extension] 重新创建API客户端");
+      logger.info("重新创建API客户端", "Extension");
 
       apiClient = new ReaderApiClient(
         newUrl,
@@ -218,20 +212,17 @@ export function activate(context: vscode.ExtensionContext) {
       );
 
       // 更新现有的书架提供者的API客户端，而不是创建新实例
-      console.log("[Extension] 更新书架提供者的API客户端");
-      outputChannel.appendLine("[Extension] 更新书架提供者的API客户端");
+      logger.info("更新书架提供者的API客户端", "Extension");
       bookshelfProvider.updateApiClient(apiClient);
 
       // 如果当前有活动的阅读器，也需要更新其API客户端和书架提供者
       if (ReaderProvider.currentPanel) {
-        console.log("[Extension] 更新当前阅读器的API客户端");
-        outputChannel.appendLine("[Extension] 更新当前阅读器的API客户端");
+        logger.info("更新当前阅读器的API客户端", "Extension");
         ReaderProvider.currentPanel.updateApiClient(apiClient);
         ReaderProvider.currentPanel.updateBookshelfProvider(bookshelfProvider);
       }
 
-      console.log("[Extension] API客户端和书架提供者已更新");
-      outputChannel.appendLine("[Extension] API客户端和书架提供者已更新");
+      logger.info("API客户端和书架提供者已更新", "Extension");
     }
 
     // 检查预加载配置变更
@@ -242,8 +233,7 @@ export function activate(context: vscode.ExtensionContext) {
       e.affectsConfiguration("readermate.preload.maxCacheSize");
 
     if (preloadConfigChanged) {
-      console.log("[Extension] 检测到预加载配置变更");
-      outputChannel.appendLine("[Extension] 检测到预加载配置变更");
+      logger.info("检测到预加载配置变更", "Extension");
 
       const config = vscode.workspace.getConfiguration("readermate");
       const newPreloadConfig: PreloadConfig = {
@@ -253,26 +243,20 @@ export function activate(context: vscode.ExtensionContext) {
         maxCacheSize: config.get<number>("preload.maxCacheSize", 10),
       };
 
-      console.log("[Extension] 新预加载配置:", newPreloadConfig);
-      outputChannel.appendLine(
-        `[Extension] 新预加载配置: ${JSON.stringify(newPreloadConfig)}`
-      );
+      logger.info(`新预加载配置: ${JSON.stringify(newPreloadConfig)}`, "Extension");
 
       // 通知当前活动的阅读器更新预加载配置
       if (ReaderProvider.currentPanel) {
-        console.log("[Extension] 更新当前阅读器的预加载配置");
-        outputChannel.appendLine("[Extension] 更新当前阅读器的预加载配置");
+        logger.info("更新当前阅读器的预加载配置", "Extension");
         ReaderProvider.currentPanel.updatePreloadConfig(newPreloadConfig);
       } else {
-        console.log("[Extension] 当前没有活动的阅读器面板");
-        outputChannel.appendLine("[Extension] 当前没有活动的阅读器面板");
+        logger.info("当前没有活动的阅读器面板", "Extension");
       }
     }
 
     // 如果没有检测到任何相关配置变更
     if (!apiConfigChanged && !preloadConfigChanged) {
-      console.log("[Extension] 配置变更不影响ReaderMate相关设置");
-      outputChannel.appendLine("[Extension] 配置变更不影响ReaderMate相关设置");
+      logger.info("配置变更不影响ReaderMate相关设置", "Extension");
     }
   });
 

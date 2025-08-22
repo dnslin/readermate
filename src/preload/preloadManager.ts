@@ -7,6 +7,7 @@ import {
   PreloadStatus,
   ReadingProgressEvent,
 } from "./types";
+import { logger } from "../utils/logger";
 
 /**
  * 预加载管理器
@@ -49,14 +50,14 @@ export class PreloadManager {
       this.clearPreloadQueue();
     }
 
-    console.log("[PreloadManager] 配置已更新:", config);
+    logger.info(`配置已更新: ${JSON.stringify(config)}`, "PreloadManager");
   }
 
   /**
    * 更新API客户端
    */
   updateApiClient(apiClient: ReaderApiClient): void {
-    console.log("[PreloadManager] 开始更新API客户端");
+    logger.info("开始更新API客户端", "PreloadManager");
     this.apiClient = apiClient;
 
     // 清空当前的预加载队列，因为API客户端已变更
@@ -65,7 +66,7 @@ export class PreloadManager {
     // 清空缓存，因为可能连接到不同的服务器
     this.cache.clear();
 
-    console.log("[PreloadManager] API客户端已更新，缓存和队列已清空");
+    logger.info("API客户端已更新，缓存和队列已清空", "PreloadManager");
   }
 
   /**
@@ -79,9 +80,7 @@ export class PreloadManager {
     }
 
     this.currentBook = { url: bookUrl, totalChapters };
-    console.log(
-      `[PreloadManager] 设置当前书籍: ${bookUrl}, 总章节数: ${totalChapters}`
-    );
+    logger.info(`设置当前书籍: ${bookUrl}, 总章节数: ${totalChapters}`, "PreloadManager");
   }
 
   /**
@@ -96,44 +95,41 @@ export class PreloadManager {
    */
   onReadingProgress(event: ReadingProgressEvent): void {
     if (!this.config.enabled || !this.currentBook) {
-      console.log(
-        `[PreloadManager] 预加载已禁用或无当前书籍: enabled=${
-          this.config.enabled
-        }, hasBook=${!!this.currentBook}`
+      logger.debug(
+        `预加载已禁用或无当前书籍: enabled=${this.config.enabled}, hasBook=${!!this.currentBook}`,
+        "PreloadManager"
       );
       return;
     }
 
     const { chapterIndex, progress, totalChapters } = event;
 
-    console.log(
-      `[PreloadManager] 收到阅读进度: 第${
-        chapterIndex + 1
-      }章 ${progress}%, 触发阈值: ${this.config.triggerProgress}%, 上次触发: ${
-        this.lastTriggeredProgress
-      }%`
+    logger.debug(
+      `收到阅读进度: 第${chapterIndex + 1}章 ${progress}%, 触发阈值: ${this.config.triggerProgress}%, 上次触发: ${this.lastTriggeredProgress}%`,
+      "PreloadManager"
     );
 
     // 避免重复触发预加载
     if (Math.abs(progress - this.lastTriggeredProgress) < 5) {
-      console.log(
-        `[PreloadManager] 进度变化不足5%，跳过预加载: ${Math.abs(
-          progress - this.lastTriggeredProgress
-        )}%`
+      logger.debug(
+        `进度变化不足5%，跳过预加载: ${Math.abs(progress - this.lastTriggeredProgress)}%`,
+        "PreloadManager"
       );
       return;
     }
 
     // 检查是否达到预加载触发条件
     if (progress >= this.config.triggerProgress) {
-      console.log(
-        `[PreloadManager] 达到预加载触发条件: ${progress}% >= ${this.config.triggerProgress}%`
+      logger.info(
+        `达到预加载触发条件: ${progress}% >= ${this.config.triggerProgress}%`,
+        "PreloadManager"
       );
       this.lastTriggeredProgress = progress;
       this.triggerPreload(this.currentBook.url, chapterIndex, totalChapters);
     } else {
-      console.log(
-        `[PreloadManager] 未达到预加载触发条件: ${progress}% < ${this.config.triggerProgress}%`
+      logger.debug(
+        `未达到预加载触发条件: ${progress}% < ${this.config.triggerProgress}%`,
+        "PreloadManager"
       );
     }
   }
@@ -156,10 +152,9 @@ export class PreloadManager {
       totalChapters - 1
     );
 
-    console.log(
-      `[PreloadManager] 触发预加载: 第${startIndex + 1}章 到 第${
-        endIndex + 1
-      }章`
+    logger.info(
+      `触发预加载: 第${startIndex + 1}章 到 第${endIndex + 1}章`,
+      "PreloadManager"
     );
 
     for (let i = startIndex; i <= endIndex; i++) {
@@ -198,7 +193,7 @@ export class PreloadManager {
     };
 
     this.preloadQueue.set(key, task);
-    console.log(`[PreloadManager] 添加预加载任务: 第${chapterIndex + 1}章`);
+    logger.debug(`添加预加载任务: 第${chapterIndex + 1}章`, "PreloadManager");
   }
 
   /**
@@ -240,7 +235,7 @@ export class PreloadManager {
 
     try {
       task.status = PreloadStatus.LOADING;
-      console.log(`[PreloadManager] 开始预加载: 第${task.chapterIndex + 1}章`);
+      logger.info(`开始预加载: 第${task.chapterIndex + 1}章`, "PreloadManager");
 
       const content = await Promise.race([
         this.apiClient.getBookContent(task.bookUrl, task.chapterIndex),
@@ -252,12 +247,9 @@ export class PreloadManager {
       this.preloadQueue.delete(key);
       this.retryAttempts.delete(key);
 
-      console.log(`[PreloadManager] 预加载完成: 第${task.chapterIndex + 1}章`);
+      logger.info(`预加载完成: 第${task.chapterIndex + 1}章`, "PreloadManager");
     } catch (error) {
-      console.error(
-        `[PreloadManager] 预加载失败: 第${task.chapterIndex + 1}章`,
-        error
-      );
+      logger.error(error, `预加载失败: 第${task.chapterIndex + 1}章`, "PreloadManager");
       this.cache.recordPreloadFailure();
 
       await this.handlePreloadError(task, error);
@@ -281,10 +273,11 @@ export class PreloadManager {
 
       // 指数退避重试
       const delay = this.RETRY_DELAY_BASE * Math.pow(2, attempts);
-      console.log(
-        `[PreloadManager] 将在${delay}ms后重试预加载第${
-          task.chapterIndex + 1
-        }章 (第${attempts + 1}次重试)`
+      logger.warn(
+        `将在${delay}ms后重试预加载第${task.chapterIndex + 1}章 (第${
+          attempts + 1
+        }次重试)`,
+        "PreloadManager"
       );
 
       setTimeout(() => {
@@ -296,10 +289,12 @@ export class PreloadManager {
       task.status = PreloadStatus.FAILED;
       this.preloadQueue.delete(key);
       this.retryAttempts.delete(key);
-      console.error(
-        `[PreloadManager] 预加载第${
-          task.chapterIndex + 1
-        }章失败，已达到最大重试次数`
+      logger.error(
+        new Error(
+          `预加载第${task.chapterIndex + 1}章失败，已达到最大重试次数`
+        ),
+        undefined,
+        "PreloadManager"
       );
     }
   }
@@ -314,12 +309,12 @@ export class PreloadManager {
     // 先尝试从缓存获取
     const cachedContent = this.cache.get(bookUrl, chapterIndex);
     if (cachedContent) {
-      console.log(`[PreloadManager] 从缓存获取章节: 第${chapterIndex + 1}章`);
+      logger.debug(`从缓存获取章节: 第${chapterIndex + 1}章`, "PreloadManager");
       return cachedContent;
     }
 
     // 缓存未命中，直接从API获取
-    console.log(`[PreloadManager] 从API获取章节: 第${chapterIndex + 1}章`);
+    logger.debug(`从API获取章节: 第${chapterIndex + 1}章`, "PreloadManager");
     const content = await this.apiClient.getBookContent(bookUrl, chapterIndex);
 
     // 将获取的内容加入缓存
@@ -334,7 +329,7 @@ export class PreloadManager {
   private clearPreloadQueue(): void {
     this.preloadQueue.clear();
     this.retryAttempts.clear();
-    console.log("[PreloadManager] 清空预加载队列");
+    logger.debug("清空预加载队列", "PreloadManager");
   }
 
   /**
@@ -371,7 +366,6 @@ export class PreloadManager {
   dispose(): void {
     this.clearPreloadQueue();
     this.cache.clear();
-    console.log("[PreloadManager] 资源已清理");
+    logger.debug("资源已清理", "PreloadManager");
   }
 }
-

@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { ReaderApiClient } from "../api/readerApi";
 import { Book } from "../api/types";
+import { logger } from "../utils/logger";
+import { showFriendlyError } from "../utils/messages";
 
 export class BookshelfProvider implements vscode.TreeDataProvider<BookItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<
@@ -26,11 +28,11 @@ export class BookshelfProvider implements vscode.TreeDataProvider<BookItem> {
    * 更新API客户端
    */
   updateApiClient(apiClient: ReaderApiClient): void {
-    console.log("[BookshelfProvider] 开始更新API客户端");
+    logger.info("开始更新API客户端", "BookshelfProvider");
     this.apiClient = apiClient;
     // 更新API客户端后重新加载书籍列表
     this.loadBooks();
-    console.log("[BookshelfProvider] API客户端已更新，重新加载书籍列表");
+    logger.info("API客户端已更新，重新加载书籍列表", "BookshelfProvider");
   }
 
   getTreeItem(element: BookItem): vscode.TreeItem {
@@ -46,15 +48,13 @@ export class BookshelfProvider implements vscode.TreeDataProvider<BookItem> {
 
   private async loadBooks() {
     try {
-      console.log("[BookshelfProvider] 开始加载书架，使用API客户端");
+      logger.info("开始加载书架", "BookshelfProvider");
       this.books = await this.apiClient.getBookshelf();
       this._onDidChangeTreeData.fire();
-      console.log(
-        `[BookshelfProvider] 书架加载成功，共 ${this.books.length} 本书`
-      );
+      logger.info(`书架加载成功，共 ${this.books.length} 本书`, "BookshelfProvider");
     } catch (error) {
-      console.error("[BookshelfProvider] 加载书架失败:", error);
-      vscode.window.showErrorMessage(`加载书架失败: ${error}`);
+      logger.error(error, "加载书架失败", "BookshelfProvider");
+      showFriendlyError("bookshelf", error, "BookshelfProvider");
     }
   }
 

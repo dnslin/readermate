@@ -1,5 +1,6 @@
 import { BookContent } from "../api/types";
 import { CacheItem, PreloadStats } from "./types";
+import { logger } from "../utils/logger";
 
 /**
  * 预加载缓存管理器
@@ -51,7 +52,7 @@ export class PreloadCache {
     const oldestKey = this.accessOrder.shift();
     if (oldestKey && this.cache.has(oldestKey)) {
       this.cache.delete(oldestKey);
-      console.log(`[PreloadCache] 淘汰缓存项: ${oldestKey}`);
+      logger.debug(`淘汰缓存项: ${oldestKey}`, "PreloadCache");
     }
   }
 
@@ -77,8 +78,7 @@ export class PreloadCache {
     this.updateAccessOrder(key);
     this.stats.currentCacheSize = this.cache.size;
     this.stats.preloadSuccess++;
-
-    console.log(`[PreloadCache] 缓存章节: ${bookUrl} 第${chapterIndex + 1}章`);
+    logger.debug(`缓存章节: ${bookUrl} 第${chapterIndex + 1}章`, "PreloadCache");
   }
 
   /**
@@ -93,13 +93,12 @@ export class PreloadCache {
       cacheItem.accessTime = Date.now();
       this.updateAccessOrder(key);
       this.stats.cacheHits++;
-      
-      console.log(`[PreloadCache] 缓存命中: ${bookUrl} 第${chapterIndex + 1}章`);
+      logger.debug(`缓存命中: ${bookUrl} 第${chapterIndex + 1}章`, "PreloadCache");
       return cacheItem.content;
     }
 
     this.stats.cacheMisses++;
-    console.log(`[PreloadCache] 缓存未命中: ${bookUrl} 第${chapterIndex + 1}章`);
+    logger.debug(`缓存未命中: ${bookUrl} 第${chapterIndex + 1}章`, "PreloadCache");
     return undefined;
   }
 
@@ -124,7 +123,7 @@ export class PreloadCache {
         this.accessOrder.splice(index, 1);
       }
       this.stats.currentCacheSize = this.cache.size;
-      console.log(`[PreloadCache] 删除缓存项: ${key}`);
+      logger.debug(`删除缓存项: ${key}`, "PreloadCache");
     }
     
     return deleted;
@@ -137,7 +136,7 @@ export class PreloadCache {
     this.cache.clear();
     this.accessOrder = [];
     this.stats.currentCacheSize = 0;
-    console.log("[PreloadCache] 清空所有缓存");
+    logger.debug("清空所有缓存", "PreloadCache");
   }
 
   /**
@@ -164,7 +163,7 @@ export class PreloadCache {
 
     if (keysToDelete.length > 0) {
       this.stats.currentCacheSize = this.cache.size;
-      console.log(`[PreloadCache] 清理过期缓存: ${keysToDelete.length} 项`);
+      logger.debug(`清理过期缓存: ${keysToDelete.length} 项`, "PreloadCache");
     }
   }
 
@@ -180,7 +179,7 @@ export class PreloadCache {
     }
     
     this.stats.currentCacheSize = this.cache.size;
-    console.log(`[PreloadCache] 更新最大缓存大小: ${maxSize}`);
+    logger.debug(`更新最大缓存大小: ${maxSize}`, "PreloadCache");
   }
 
   /**

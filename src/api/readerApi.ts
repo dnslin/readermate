@@ -3,6 +3,7 @@ import * as http from "node:http";
 import { URL } from "node:url";
 import * as vscode from "vscode";
 import { Book, Chapter, BookContent } from "./types";
+import { logger } from "../utils/logger";
 
 export class ReaderApiClient {
   private baseUrl: string;
@@ -25,12 +26,7 @@ export class ReaderApiClient {
     this.accessToken = accessToken;
     this.outputChannel = outputChannel;
 
-    console.log(`[ReaderApiClient] 创建API客户端，baseUrl: ${this.baseUrl}`);
-    if (this.outputChannel) {
-      this.outputChannel.appendLine(
-        `[ReaderApiClient] 创建API客户端，baseUrl: ${this.baseUrl}`
-      );
-    }
+    logger.info(`创建API客户端，baseUrl: ${this.baseUrl}`, "ReaderApiClient");
   }
 
   private async request(path: string, options: any = {}): Promise<any> {
@@ -45,10 +41,7 @@ export class ReaderApiClient {
     }
 
     const logMessage = `发起API请求: ${url.toString()}`;
-    console.log(logMessage);
-    if (this.outputChannel) {
-      this.outputChannel.appendLine(logMessage);
-    }
+    logger.info(logMessage, "ReaderApiClient");
 
     // 添加POST数据调试信息
     if (options.method === "POST" && options.data) {
@@ -57,10 +50,7 @@ export class ReaderApiClient {
         null,
         2
       )}`;
-      console.log(postDataMessage);
-      if (this.outputChannel) {
-        this.outputChannel.appendLine(postDataMessage);
-      }
+      logger.debug(postDataMessage, "ReaderApiClient");
     }
 
     return new Promise((resolve, reject) => {
@@ -83,14 +73,8 @@ export class ReaderApiClient {
           res.on("end", () => {
             const statusMessage = `API响应状态码: ${res.statusCode}`;
             const contentMessage = `API响应内容: ${data}`;
-
-            console.log(statusMessage);
-            console.log(contentMessage);
-
-            if (this.outputChannel) {
-              this.outputChannel.appendLine(statusMessage);
-              this.outputChannel.appendLine(contentMessage);
-            }
+            logger.debug(statusMessage, "ReaderApiClient");
+            logger.debug(contentMessage, "ReaderApiClient");
 
             try {
               const result = JSON.parse(data);
@@ -107,17 +91,18 @@ export class ReaderApiClient {
               }
             } catch (e) {
               const errorMessage = `JSON解析失败，原始响应: ${data}`;
-              console.error(errorMessage);
-              if (this.outputChannel) {
-                this.outputChannel.appendLine(errorMessage);
-              }
+              logger.error(new Error(errorMessage), undefined, "ReaderApiClient");
               reject(new Error(`响应解析失败: ${data.substring(0, 200)}...`));
             }
           });
         }
       );
 
-      req.on("error", reject);
+      req.on("error", (err) => {
+        logger.error(err, "网络请求失败", "ReaderApiClient");
+        // 返回更友好的错误信息
+        reject(new Error("无法连接服务器或请求失败，请检查网络或服务器地址"));
+      });
 
       if (options.data) {
         req.write(JSON.stringify(options.data));
@@ -156,10 +141,7 @@ export class ReaderApiClient {
       null,
       2
     )}`;
-    console.log(logMessage);
-    if (this.outputChannel) {
-      this.outputChannel.appendLine(logMessage);
-    }
+    logger.debug(logMessage, "ReaderApiClient");
 
     // API返回的可能是字符串内容或对象，需要转换为BookContent格式
     let contentText = "";
@@ -176,8 +158,9 @@ export class ReaderApiClient {
       prevUrl: undefined,
     };
 
-    console.log(
-      `转换后的BookContent: title="${bookContent.title}", content长度=${bookContent.content.length}`
+    logger.debug(
+      `转换后的BookContent: title="${bookContent.title}", content长度=${bookContent.content.length}`,
+      "ReaderApiClient"
     );
 
     return bookContent;
@@ -192,12 +175,7 @@ export class ReaderApiClient {
       index: durChapterIndex,
     };
 
-    console.log(`保存阅读进度: ${JSON.stringify(progressData, null, 2)}`);
-    if (this.outputChannel) {
-      this.outputChannel.appendLine(
-        `保存阅读进度: ${JSON.stringify(progressData, null, 2)}`
-      );
-    }
+    logger.debug(`保存阅读进度: ${JSON.stringify(progressData, null, 2)}`, "ReaderApiClient");
 
     return this.request("/saveBookProgress", {
       method: "POST",

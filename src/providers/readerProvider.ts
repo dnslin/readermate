@@ -4,6 +4,8 @@ import { Book, Chapter, BookContent } from "../api/types";
 import { BookshelfProvider } from "./bookshelfProvider";
 import { PreloadManager } from "../preload/preloadManager";
 import { PreloadConfig, ReadingProgressEvent } from "../preload/types";
+import { logger } from "../utils/logger";
+import { showFriendlyError } from "../utils/messages";
 
 export class ReaderProvider implements vscode.WebviewPanelSerializer {
   public static currentPanel: ReaderProvider | undefined;
@@ -105,27 +107,27 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
    */
   public updatePreloadConfig(config: PreloadConfig): void {
     this.preloadManager.updateConfig(config);
-    console.log("[ReaderProvider] 预加载配置已更新");
+    logger.info("预加载配置已更新", "ReaderProvider");
   }
 
   /**
    * 更新API客户端
    */
   public updateApiClient(apiClient: ReaderApiClient): void {
-    console.log("[ReaderProvider] 开始更新API客户端");
+    logger.info("开始更新API客户端", "ReaderProvider");
     this.apiClient = apiClient;
 
     // 更新预加载管理器的API客户端
     this.preloadManager.updateApiClient(apiClient);
 
-    console.log("[ReaderProvider] API客户端已更新");
+    logger.info("API客户端已更新", "ReaderProvider");
   }
 
   /**
    * 更新书架提供者
    */
   public updateBookshelfProvider(bookshelfProvider: BookshelfProvider): void {
-    console.log("[ReaderProvider] 更新书架提供者");
+    logger.info("更新书架提供者", "ReaderProvider");
     this.bookshelfProvider = bookshelfProvider;
   }
 
@@ -144,10 +146,9 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     };
 
     this.preloadManager.onReadingProgress(event);
-    console.log(
-      `[ReaderProvider] 阅读进度更新: 第${
-        this.currentChapterIndex + 1
-      }章 ${progress}%`
+    logger.debug(
+      `阅读进度更新: 第${this.currentChapterIndex + 1}章 ${progress}%`,
+      "ReaderProvider"
     );
   }
 
@@ -167,19 +168,21 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     this._panel.title = `阅读: ${book.name}`;
 
     try {
-      console.log(`开始获取章节列表: ${book.name}, bookUrl: ${book.bookUrl}`);
+      logger.info(`开始获取章节列表: ${book.name}, bookUrl: ${book.bookUrl}`,
+        "ReaderProvider");
       this.chapters = await this.apiClient.getChapterList(book.bookUrl);
-      console.log(`章节列表获取成功，共 ${this.chapters.length} 章`);
+      logger.info(`章节列表获取成功，共 ${this.chapters.length} 章`, "ReaderProvider");
 
       // 使用书籍的阅读进度作为起始章节，如果没有则从第0章开始
       this.currentChapterIndex = book.durChapterIndex || 0;
-      console.log(
-        `设置起始章节索引: ${this.currentChapterIndex} (来自书籍进度: ${book.durChapterIndex})`
+      logger.info(
+        `设置起始章节索引: ${this.currentChapterIndex} (来自书籍进度: ${book.durChapterIndex})`,
+        "ReaderProvider"
       );
 
       // 确保章节索引不超出范围
       if (this.currentChapterIndex >= this.chapters.length) {
-        console.log(`章节索引超出范围，重置为0`);
+        logger.warn("章节索引超出范围，重置为0", "ReaderProvider");
         this.currentChapterIndex = 0;
       }
 
@@ -188,8 +191,8 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
       // 设置预加载管理器的当前书籍信息
       this.preloadManager.setCurrentBook(book.bookUrl, this.chapters.length);
     } catch (error) {
-      console.error(`加载章节失败:`, error);
-      vscode.window.showErrorMessage(`加载章节失败: ${error}`);
+      logger.error(error, "加载章节失败", "ReaderProvider");
+      showFriendlyError("chapterList", error, "ReaderProvider");
     }
   }
 
@@ -219,38 +222,38 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         this.currentBook.bookUrl,
         this.currentChapterIndex
       );
-      console.log(
+      logger.debug(
         `已保存阅读进度: 第${this.currentChapterIndex + 1}章 ${
           this.chapters[this.currentChapterIndex]?.title || "未知章节"
-        }`
+        }`,
+        "ReaderProvider"
       );
 
       // 保存进度成功后刷新书架，以更新书籍的阅读进度
       if (this.bookshelfProvider) {
-        console.log("刷新书架以更新阅读进度");
+        logger.info("刷新书架以更新阅读进度", "ReaderProvider");
         this.bookshelfProvider.refresh();
       }
     } catch (error) {
-      console.error(`保存阅读进度失败:`, error);
+      logger.warn(`保存阅读进度失败: ${String(error)}`, "ReaderProvider");
       // 不显示错误消息给用户，避免打断阅读体验
     }
   }
 
   private async loadCurrentChapter() {
     if (!this.chapters[this.currentChapterIndex] || !this.currentBook) {
-      console.log(
-        `无法加载章节: chapters.length=${
-          this.chapters?.length
-        }, currentChapterIndex=${this.currentChapterIndex}, currentBook=${!!this
-          .currentBook}`
+      logger.warn(
+        `无法加载章节: chapters.length=${this.chapters?.length}, currentChapterIndex=${this.currentChapterIndex}, currentBook=${!!this.currentBook}`,
+        "ReaderProvider"
       );
       return;
     }
 
     try {
       const chapter = this.chapters[this.currentChapterIndex];
-      console.log(
-        `准备加载章节: ${chapter.title}, 索引: ${this.currentChapterIndex}`
+      logger.info(
+        `准备加载章节: ${chapter.title}, 索引: ${this.currentChapterIndex}`,
+        "ReaderProvider"
       );
 
       // 优先从预加载缓存获取章节内容
@@ -259,9 +262,10 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         this.currentChapterIndex
       );
 
-      console.log(`getBookContent返回的数据类型: ${typeof content}`);
-      console.log(
-        `getBookContent返回的数据: ${JSON.stringify(content, null, 2)}`
+      logger.debug(`getBookContent返回的数据类型: ${typeof content}`, "ReaderProvider");
+      logger.debug(
+        `getBookContent返回的数据: ${JSON.stringify(content, null, 2)}`,
+        "ReaderProvider"
       );
 
       // 使用章节列表中的标题覆盖API返回的标题
@@ -273,18 +277,17 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         !Array.isArray(content) &&
         typeof content !== "string"
       ) {
-        console.log(`正在设置章节标题: ${chapter.title}`);
+        logger.debug(`正在设置章节标题: ${chapter.title}`, "ReaderProvider");
         content.title = chapter.title;
       } else {
-        console.log(
-          `无法设置章节标题，content类型: ${typeof content}, chapter.title: ${
-            chapter.title
-          }`
+        logger.debug(
+          `无法设置章节标题，content类型: ${typeof content}, chapter.title: ${chapter.title}`,
+          "ReaderProvider"
         );
       }
 
-      console.log(`章节内容加载成功: ${content.title}`);
-      console.log(`章节内容长度: ${content.content?.length || 0} 字符`);
+      logger.info(`章节内容加载成功: ${content.title}`, "ReaderProvider");
+      logger.debug(`章节内容长度: ${content.content?.length || 0} 字符`, "ReaderProvider");
 
       const messageData = {
         command: "updateChapter",
@@ -298,11 +301,14 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         },
       };
 
-      console.log(`准备发送WebView消息:`, JSON.stringify(messageData, null, 2));
+      logger.debug(
+        `准备发送WebView消息: ${JSON.stringify(messageData, null, 2)}`,
+        "ReaderProvider"
+      );
       this._panel.webview.postMessage(messageData);
     } catch (error) {
-      console.error(`加载章节内容失败:`, error);
-      vscode.window.showErrorMessage(`加载章节内容失败: ${error}`);
+      logger.error(error, "加载章节内容失败", "ReaderProvider");
+      showFriendlyError("content", error, "ReaderProvider");
     }
   }
 
@@ -323,7 +329,7 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
             this.handleReadingProgress(message.progress);
             break;
           case "ready":
-            console.log("WebView已准备就绪");
+            logger.debug("WebView已准备就绪", "ReaderProvider");
             break;
         }
       },
