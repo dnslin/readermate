@@ -65,7 +65,8 @@ export function activate(context: vscode.ExtensionContext) {
   const commands = [
     vscode.commands.registerCommand("readermate.openBookshelf", () => {
       console.log("执行打开书架命令");
-      vscode.commands.executeCommand("novelBookshelf.focus");
+      // 聚焦到 Readermate 的书架视图
+      vscode.commands.executeCommand("readermateBookshelf.focus");
     }),
 
     vscode.commands.registerCommand("readermate.openReader", (book) => {
@@ -110,7 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   vscode.commands.executeCommand("setContext", "readermate.enabled", true);
 
-  vscode.workspace.onDidChangeConfiguration((e) => {
+  const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
     console.log("[Extension] 配置变更事件触发");
     outputChannel.appendLine("[Extension] 配置变更事件触发");
 
@@ -218,6 +219,9 @@ export function activate(context: vscode.ExtensionContext) {
       outputChannel.appendLine("[Extension] 配置变更不影响ReaderMate相关设置");
     }
   });
+
+  // 确保在扩展停用时正确清理监听器
+  context.subscriptions.push(configChangeDisposable);
 }
 
 export function deactivate() {
