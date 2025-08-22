@@ -55,7 +55,25 @@ jobs:
           npm version ${{ steps.ver.outputs.version }} --no-git-tag-version
 
       - name: Build
-        run: pnpm run compile
+        run: pnpm run build
+
+      - name: Locate VSIX
+        id: locate
+        shell: bash
+        run: |
+          FILE=$(ls -1 *.vsix | head -n 1)
+          if [[ -z "$FILE" ]]; then
+            echo "未找到 VSIX 文件，构建失败" >&2
+            exit 1
+          fi
+          echo "file=$FILE" >> $GITHUB_OUTPUT
+          echo "VSIX_PATH=$FILE" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: ${{ steps.locate.outputs.file }}
 
       - name: Resolve tag name
         id: meta
@@ -75,5 +93,6 @@ jobs:
           name: ReaderMate v${{ steps.ver.outputs.version }}
           draft: false
           prerelease: false
+          files: ${{ steps.locate.outputs.file }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

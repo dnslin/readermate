@@ -183,7 +183,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package --allow-star-activation",
+    "package": "vsce package --allow-star-activation --no-dependencies",
     "build": "pnpm run compile && pnpm run package",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src --ext ts",
