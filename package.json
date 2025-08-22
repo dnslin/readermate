@@ -4,7 +4,7 @@
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
   "version": "1.0.0",
-  "publisher": "readermate",
+  "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -25,27 +25,27 @@
   "main": "./out/extension.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dnslin/readermate-vscode.git"
+    "url": "https://github.com/dnslin/readermate.git"
   },
-    "contributes": {
-      "commands": [
-        {
-          "command": "readermate.openBookshelf",
-          "title": "Open Bookshelf",
-          "category": "ReaderMate",
-          "icon": "$(library)"
-        },
-        {
-          "command": "readermate.showConfig",
-          "title": "Show Effective Config",
-          "category": "ReaderMate",
-          "icon": "$(gear)"
-        },
-        {
-          "command": "readermate.openReader",
-          "title": "Open Reader"
-        },
-        {
+  "contributes": {
+    "commands": [
+      {
+        "command": "readermate.openBookshelf",
+        "title": "Open Bookshelf",
+        "category": "ReaderMate",
+        "icon": "$(library)"
+      },
+      {
+        "command": "readermate.showConfig",
+        "title": "Show Effective Config",
+        "category": "ReaderMate",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "readermate.openReader",
+        "title": "Open Reader"
+      },
+      {
         "command": "readermate.prevChapter",
         "title": "Previous Chapter"
       },

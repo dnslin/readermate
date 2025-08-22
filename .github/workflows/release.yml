@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g., 1.2.3) for manual release"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "pnpm"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Derive version
+        id: ver
+        shell: bash
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            RAW="${{ github.event.inputs.version }}"
+          elif [[ "$REF" == v* ]]; then
+            RAW="${REF#v}"
+          else
+            RAW="$(node -p "require('./package.json').version")"
+          fi
+          echo "version=$RAW" >> $GITHUB_OUTPUT
+
+      - name: Align package.json version
+        run: |
+          npm version ${{ steps.ver.outputs.version }} --no-git-tag-version
+
+      - name: Build
+        run: pnpm run compile
+
+      - name: Package VSIX
+        run: pnpm exec vsce package --allow-star-activation
+
+      - name: Locate VSIX
+        id: locate
+        shell: bash
+        run: |
+          FILE=$(ls -1 *.vsix | head -n 1)
+          echo "file=$FILE" >> $GITHUB_OUTPUT
+          echo "VSIX_PATH=$FILE" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: ${{ steps.locate.outputs.file }}
+
+      - name: Resolve tag name
+        id: meta
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v${{ steps.ver.outputs.version }}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ReaderMate v${{ steps.ver.outputs.version }}
+          draft: false
+          prerelease: false
+          files: ${{ steps.locate.outputs.file }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to VS Code Marketplace (optional)
+        if: ${{ secrets.VSCE_PAT != '' }}
+        run: pnpm exec vsce publish -p $VSCE_PAT
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
