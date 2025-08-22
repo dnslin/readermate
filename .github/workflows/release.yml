@@ -36,7 +36,7 @@ jobs:
       # pnpm cache is intentionally disabled to avoid path resolution issues
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no--frozen-lockfile
 
       - name: Derive version
         id: ver
@@ -101,3 +101,4 @@ jobs:
       - name: Publish to VS Code Marketplace (optional)
         if: ${{ env.VSCE_PAT != '' }}
         run: pnpm exec vsce publish -p "$VSCE_PAT"
+
