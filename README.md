@@ -32,7 +32,7 @@
 
 - 使用 `Ctrl+Shift+L` 打开您的书架
 - 或点击活动栏中的书本图标
-- 或使用命令面板："ReaderMate: Open Bookshelf"
+ - 或使用命令面板："ReaderMate: 打开书架"
 
 ### 阅读
 

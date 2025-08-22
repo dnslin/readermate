@@ -32,31 +32,31 @@
     "commands": [
       {
         "command": "readermate.openBookshelf",
-        "title": "Open Bookshelf",
+        "title": "打开书架",
         "category": "ReaderMate",
         "icon": "$(library)"
       },
       {
         "command": "readermate.showConfig",
-        "title": "Show Effective Config",
+        "title": "查看生效配置",
         "category": "ReaderMate",
         "icon": "$(gear)"
       },
       {
         "command": "readermate.openReader",
-        "title": "Open Reader"
+        "title": "打开阅读器"
       },
       {
         "command": "readermate.prevChapter",
-        "title": "Previous Chapter"
+        "title": "上一章"
       },
       {
         "command": "readermate.nextChapter",
-        "title": "Next Chapter"
+        "title": "下一章"
       },
       {
         "command": "readermate.refreshBookshelf",
-        "title": "Refresh Bookshelf",
+        "title": "刷新书架",
         "icon": "$(refresh)"
       }
     ],
@@ -89,7 +89,7 @@
       "readermate": [
         {
           "id": "readermateBookshelf",
-          "name": "My Bookshelf"
+          "name": "我的书架"
         }
       ]
     },
@@ -116,66 +116,66 @@
           "default": 16,
           "minimum": 14,
           "maximum": 22,
-          "description": "Reader content font size (px), balanced for readability"
+          "description": "阅读内容字号（px），兼顾可读性"
         },
         "readermate.stealth.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable stealth mode for discreet reading"
+          "description": "启用隐身模式，便于低调阅读"
         },
         "readermate.stealth.hideToolbar": {
           "type": "boolean",
           "default": true,
-          "description": "Hide toolbar in stealth mode (use keyboard to navigate)"
+          "description": "隐身模式下隐藏工具栏（使用键盘导航）"
         },
         "readermate.stealth.disguiseTitle": {
           "type": "string",
-          "default": "Output",
-          "description": "Tab title when stealth mode is enabled"
+          "default": "输出",
+          "description": "隐身模式启用时的标签标题"
         },
         "readermate.serverUrl": {
           "type": "string",
           "default": "https://reader.me",
-          "description": "Reader server base URL"
+          "description": "Reader 服务器基础地址"
         },
         "readermate.appendReader3Path": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically append /reader3 path to server URL"
+          "description": "自动在服务器地址后追加 /reader3 路径"
         },
         "readermate.username": {
           "type": "string",
-          "description": "Username"
+          "description": "用户名"
         },
         "readermate.token": {
           "type": "string",
-          "description": "Access token"
+          "description": "访问令牌"
         },
         "readermate.preload.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable chapter preloading feature"
+          "description": "启用章节预加载功能"
         },
         "readermate.preload.chapterCount": {
           "type": "number",
           "default": 2,
           "minimum": 1,
           "maximum": 5,
-          "description": "Number of chapters to preload (1-5 chapters)"
+          "description": "预加载的章节数（1-5 章）"
         },
         "readermate.preload.triggerProgress": {
           "type": "number",
           "default": 50,
           "minimum": 30,
           "maximum": 95,
-          "description": "Reading progress percentage to trigger preloading (30%-95%)"
+          "description": "达到多少阅读进度时开始预加载（30%-95%）"
         },
         "readermate.preload.maxCacheSize": {
           "type": "number",
           "default": 10,
           "minimum": 5,
           "maximum": 20,
-          "description": "Maximum number of cached chapters (5-20 chapters)"
+          "description": "缓存中最大保留章节数（5-20 章）"
         }
       }
     }
