@@ -33,13 +33,7 @@ jobs:
           corepack prepare pnpm@8 --activate
           pnpm -v
 
-      - name: Enable pnpm cache
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: pnpm
-          cache-dependency-path: |
-            **/pnpm-lock.yaml
+      # pnpm cache is intentionally disabled to avoid path resolution issues
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
