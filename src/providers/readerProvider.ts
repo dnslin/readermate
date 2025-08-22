@@ -41,9 +41,15 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
       return;
     }
 
+    // Read stealth config for initial title
+    const cfg = vscode.workspace.getConfiguration('readermate');
+    const stealthEnabled = cfg.get<boolean>('stealth.enabled', true);
+    const disguiseTitle = cfg.get<string>('stealth.disguiseTitle', 'Output');
+    const initialTitle = stealthEnabled ? (disguiseTitle || 'Output') : '小说阅读器';
+
     const panel = vscode.window.createWebviewPanel(
       ReaderProvider.viewType,
-      "小说阅读器",
+      initialTitle,
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -165,7 +171,10 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
 
   public async openBook(book: Book) {
     this.currentBook = book;
-    this._panel.title = `阅读: ${book.name}`;
+    const cfg = vscode.workspace.getConfiguration('readermate');
+    const stealthEnabled = cfg.get<boolean>('stealth.enabled', true);
+    const disguiseTitle = cfg.get<string>('stealth.disguiseTitle', 'Output');
+    this._panel.title = stealthEnabled ? (disguiseTitle || 'Output') : `阅读: ${book.name}`;
 
     try {
       logger.info(`开始获取章节列表: ${book.name}, bookUrl: ${book.bookUrl}`,
@@ -330,6 +339,23 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
             break;
           case "ready":
             logger.debug("WebView已准备就绪", "ReaderProvider");
+            // Apply stealth on ready
+            try {
+              const cfg = vscode.workspace.getConfiguration('readermate');
+              const stealthEnabled = cfg.get<boolean>('stealth.enabled', true);
+              const hideToolbar = cfg.get<boolean>('stealth.hideToolbar', true);
+              const fontSize = cfg.get<number>('reader.fontSize', 16);
+              this._panel.webview.postMessage({
+                command: 'applyStealth',
+                data: { stealthEnabled, hideToolbar, fontSize },
+              });
+            } catch {}
+            break;
+          case "panic":
+            // Quick-close/boss key
+            try {
+              this._panel.dispose();
+            } catch {}
             break;
         }
       },
@@ -345,6 +371,9 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "media", "reader.css")
     );
+    // Read font size for initial CSS var in case script is delayed
+    const cfg = vscode.workspace.getConfiguration('readermate');
+    const fontSize = cfg.get<number>('reader.fontSize', 16);
 
     return `<!DOCTYPE html>
       <html lang="zh-CN">
@@ -352,6 +381,7 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${styleUri}" rel="stylesheet">
+        <style> :root { --reader-font-size: ${fontSize}px; } </style>
         <title>ReaderMate</title>
       </head>
       <body>

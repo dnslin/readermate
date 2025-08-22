@@ -110,6 +110,28 @@
     "configuration": {
       "title": "ReaderMate",
       "properties": {
+        "readermate.reader.fontSize": {
+          "type": "number",
+          "default": 16,
+          "minimum": 14,
+          "maximum": 22,
+          "description": "Reader content font size (px), balanced for readability"
+        },
+        "readermate.stealth.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable stealth mode for discreet reading"
+        },
+        "readermate.stealth.hideToolbar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide toolbar in stealth mode (use keyboard to navigate)"
+        },
+        "readermate.stealth.disguiseTitle": {
+          "type": "string",
+          "default": "Output",
+          "description": "Tab title when stealth mode is enabled"
+        },
         "readermate.serverUrl": {
           "type": "string",
           "default": "https://reader.me",

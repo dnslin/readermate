@@ -1,10 +1,15 @@
+:root {
+  --reader-font-size: 16px;
+  --reader-line-height: 1.7;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   margin: 0;
   padding: 0;
   background-color: var(--vscode-editor-background);
   color: var(--vscode-editor-foreground);
-  line-height: 1.6;
+  line-height: var(--reader-line-height);
 }
 
 .reader-container {
@@ -65,8 +70,8 @@ body {
 }
 
 .content {
-  font-size: 16px;
-  line-height: 2;
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line-height);
   text-align: justify;
 }
 
@@ -101,4 +106,28 @@ body {
     padding: 6px 12px;
     font-size: 12px;
   }
+}
+
+/* Stealth mode: hide chrome, mimic code-like look */
+body.stealth .toolbar {
+  display: none;
+}
+
+body.stealth #chapter-title {
+  display: none;
+}
+
+body.stealth .content-area {
+  max-width: 100%;
+  padding: 8px 12px;
+}
+
+body.stealth .content {
+  font-family: var(--vscode-editor-font-family, Consolas, "Courier New", monospace);
+  text-align: left;
+}
+
+body.stealth .content p {
+  margin: 6px 0;
+  text-indent: 0;
 }

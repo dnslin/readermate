@@ -21,7 +21,19 @@
   });
 
   document.addEventListener("keydown", (e) => {
+    // Quick-close boss key: Esc or Ctrl+W
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      vscode.postMessage({ command: 'panic' });
+      return;
+    }
+
     if (e.ctrlKey) {
+      if (e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        vscode.postMessage({ command: 'panic' });
+        return;
+      }
       switch (e.key) {
         case "ArrowLeft":
           e.preventDefault();
@@ -47,6 +59,9 @@
       case "updateChapter":
         console.log("开始更新章节:", message.data);
         updateChapter(message.data);
+        break;
+      case "applyStealth":
+        applyStealth(message.data);
         break;
     }
   });
@@ -92,6 +107,28 @@
     }
 
     console.log("章节更新完成");
+  }
+
+  function applyStealth(config) {
+    try {
+      const { stealthEnabled, hideToolbar, fontSize } = config || {};
+      if (typeof fontSize === 'number') {
+        document.documentElement.style.setProperty('--reader-font-size', fontSize + 'px');
+      }
+      if (stealthEnabled) {
+        document.body.classList.add('stealth');
+        if (!hideToolbar) {
+          // Keep toolbar visible if explicitly requested
+          const tb = document.querySelector('.toolbar');
+          if (tb) tb.style.display = '';
+        }
+      } else {
+        document.body.classList.remove('stealth');
+      }
+      console.log('[Stealth] applied:', config);
+    } catch (e) {
+      console.log('[Stealth] failed to apply:', e);
+    }
   }
 
   /**
