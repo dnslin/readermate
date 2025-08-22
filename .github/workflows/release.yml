@@ -16,8 +16,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,23 +57,6 @@ jobs:
       - name: Build
         run: pnpm run compile
 
-      - name: Package VSIX
-        run: pnpm exec vsce package --allow-star-activation
-
-      - name: Locate VSIX
-        id: locate
-        shell: bash
-        run: |
-          FILE=$(ls -1 *.vsix | head -n 1)
-          echo "file=$FILE" >> $GITHUB_OUTPUT
-          echo "VSIX_PATH=$FILE" >> $GITHUB_ENV
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vsix
-          path: ${{ steps.locate.outputs.file }}
-
       - name: Resolve tag name
         id: meta
         shell: bash
@@ -94,10 +75,5 @@ jobs:
           name: ReaderMate v${{ steps.ver.outputs.version }}
           draft: false
           prerelease: false
-          files: ${{ steps.locate.outputs.file }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to VS Code Marketplace (optional)
-        if: ${{ env.VSCE_PAT != '' }}
-        run: pnpm exec vsce publish -p "$VSCE_PAT"
