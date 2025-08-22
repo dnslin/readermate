@@ -6,7 +6,8 @@
   "version": "1.0.0",
   "publisher": "readermate-dnslin",
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.60.0",
+    "node": ">=20"
   },
   "categories": [
     "Other"

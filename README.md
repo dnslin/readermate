@@ -65,6 +65,16 @@
 - 可访问的 Reader3 服务器
 - 有效的身份验证凭据
 
+## 开发与构建
+
+- Node.js 20 或更高版本（用于本地打包与 CI 构建）。
+- 使用 pnpm：`corepack enable && corepack prepare pnpm@8 --activate`。
+- 常用命令：
+  - 安装依赖：`pnpm i`
+  - 开发编译：`pnpm watch`
+  - 一次性编译：`pnpm compile`
+  - 打包 VSIX：`pnpm run package`
+
 ## 已知问题
 
 - 大型书籍可能需要较长时间进行初始加载
@@ -89,4 +99,3 @@
 ## 许可证
 
 此插件基于 MIT 许可证授权。
-
