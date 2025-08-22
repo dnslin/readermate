@@ -79,8 +79,64 @@ export function activate(context: vscode.ExtensionContext) {
       );
     }),
 
+    // 显示当前生效配置
+    vscode.commands.registerCommand("readermate.showConfig", () => {
+      const cfg = vscode.workspace.getConfiguration("readermate");
+      const serverUrl = cfg.get<string>("serverUrl", "");
+      const username = cfg.get<string>("username");
+      const token = cfg.get<string>("token");
+      const appendReader3Path = cfg.get<boolean>("appendReader3Path", true);
+      const preloadEnabled = cfg.get<boolean>("preload.enabled", true);
+      const preloadChapterCount = cfg.get<number>("preload.chapterCount", 2);
+      const preloadTriggerProgress = cfg.get<number>(
+        "preload.triggerProgress",
+        50
+      );
+      const preloadMaxCacheSize = cfg.get<number>("preload.maxCacheSize", 10);
+
+      // 计算实际使用的 baseUrl（模拟 ReaderApiClient 的标准化逻辑）
+      let normalizedUrl = serverUrl.endsWith("/") ? serverUrl : serverUrl + "/";
+      if (appendReader3Path && !normalizedUrl.includes("/reader3/")) {
+        normalizedUrl = normalizedUrl + "reader3/";
+      }
+
+      const maskedToken = token ? "***" : "(not set)";
+      const accessTokenState = username && token ? "set" : "not set";
+
+      outputChannel.appendLine("[ReaderMate] ===== Current Effective Config =====");
+      outputChannel.appendLine(`serverUrl: ${serverUrl}`);
+      outputChannel.appendLine(`appendReader3Path: ${appendReader3Path}`);
+      outputChannel.appendLine(`computedBaseUrl: ${normalizedUrl}`);
+      outputChannel.appendLine(`username: ${username ?? "(not set)"}`);
+      outputChannel.appendLine(`token: ${maskedToken}`);
+      outputChannel.appendLine(`accessToken(computed): ${accessTokenState}`);
+      outputChannel.appendLine(
+        `preload: enabled=${preloadEnabled}, chapterCount=${preloadChapterCount}, triggerProgress=${preloadTriggerProgress}, maxCacheSize=${preloadMaxCacheSize}`
+      );
+      outputChannel.appendLine("[ReaderMate] =====================================");
+      outputChannel.show(true);
+
+      vscode.window.showInformationMessage("ReaderMate: 配置已输出到面板");
+    }),
+
     vscode.commands.registerCommand("readermate.refreshBookshelf", () => {
-      bookshelfProvider.refresh();
+      // 刷新前读取最新配置，确保使用最新的 serverUrl/凭证
+      const cfg = vscode.workspace.getConfiguration("readermate");
+      const newUrl = cfg.get<string>("serverUrl", "");
+      const newUsername = cfg.get<string>("username");
+      const newToken = cfg.get<string>("token");
+      const newAppendReader3Path = cfg.get<boolean>("appendReader3Path", true);
+
+      const newAccessToken =
+        newUsername && newToken ? `${newUsername}:${newToken}` : undefined;
+
+      apiClient = new ReaderApiClient(
+        newUrl,
+        newAccessToken,
+        outputChannel,
+        newAppendReader3Path
+      );
+      bookshelfProvider.updateApiClient(apiClient);
     }),
 
     vscode.commands.registerCommand("readermate.prevChapter", () => {

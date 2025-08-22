@@ -352,9 +352,11 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         <div class="reader-container">
           <div class="toolbar">
             <button id="prev-btn" class="nav-btn" disabled>上一章</button>
+            <span id="chapter-info"></span>
             <button id="next-btn" class="nav-btn" disabled>下一章</button>
           </div>
           <div class="content-area">
+            <div id="chapter-title"></div>
             <div id="chapter-content" class="content"></div>
           </div>
         </div>

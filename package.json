@@ -27,19 +27,25 @@
     "type": "git",
     "url": "https://github.com/dnslin/readermate-vscode.git"
   },
-  "contributes": {
-    "commands": [
-      {
-        "command": "readermate.openBookshelf",
-        "title": "Open Bookshelf",
-        "category": "ReaderMate",
-        "icon": "$(library)"
-      },
-      {
-        "command": "readermate.openReader",
-        "title": "Open Reader"
-      },
-      {
+    "contributes": {
+      "commands": [
+        {
+          "command": "readermate.openBookshelf",
+          "title": "Open Bookshelf",
+          "category": "ReaderMate",
+          "icon": "$(library)"
+        },
+        {
+          "command": "readermate.showConfig",
+          "title": "Show Effective Config",
+          "category": "ReaderMate",
+          "icon": "$(gear)"
+        },
+        {
+          "command": "readermate.openReader",
+          "title": "Open Reader"
+        },
+        {
         "command": "readermate.prevChapter",
         "title": "Previous Chapter"
       },

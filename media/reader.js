@@ -56,6 +56,15 @@
     console.log("章节标题:", data.title);
     console.log("章节内容长度:", data.content?.length || 0);
 
+    if (!chapterTitle || !chapterContent || !chapterInfo) {
+      console.error('[ReaderMate] 缺少必要的DOM元素: ', {
+        hasTitle: !!chapterTitle,
+        hasContent: !!chapterContent,
+        hasInfo: !!chapterInfo,
+      });
+      return;
+    }
+
     chapterTitle.textContent = data.title || "无标题";
     const formattedContent = formatContent(data.content);
     console.log("格式化后的内容长度:", formattedContent.length);
@@ -68,13 +77,15 @@
     nextBtn.disabled = !data.hasNext;
 
     const contentArea = document.querySelector(".content-area");
-    contentArea.scrollTop = 0;
+    if (contentArea) {
+      contentArea.scrollTop = 0;
+    }
 
     // 重置阅读进度跟踪
     lastReportedProgress = 0;
 
     // 添加滚动监听器（如果还没有添加）
-    if (!contentArea.hasAttribute('data-scroll-listener')) {
+    if (contentArea && !contentArea.hasAttribute('data-scroll-listener')) {
       contentArea.addEventListener('scroll', throttle(trackReadingProgress, 500));
       contentArea.setAttribute('data-scroll-listener', 'true');
       console.log('[滚动调试] 已添加滚动监听器');
