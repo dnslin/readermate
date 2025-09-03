@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ReaderApiClient } from "../api/readerApi";
-import { Book, Chapter, BookContent } from "../api/types";
+import { Book, Chapter } from "../api/types";
 import { BookshelfProvider } from "./bookshelfProvider";
 import { PreloadManager } from "../preload/preloadManager";
 import { PreloadConfig, ReadingProgressEvent } from "../preload/types";
