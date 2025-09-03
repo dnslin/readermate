@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ReaderApiClient } from "../api/readerApi";
 import { Book, Chapter } from "../api/types";
 import { BookshelfProvider } from "./bookshelfProvider";
+import { ReaderViewProvider } from "./readerViewProvider";
 import { PreloadManager } from "../preload/preloadManager";
 import { PreloadConfig, ReadingProgressEvent } from "../preload/types";
 import { logger } from "../utils/logger";
@@ -9,6 +10,7 @@ import { showFriendlyError } from "../utils/messages";
 
 export class ReaderProvider implements vscode.WebviewPanelSerializer {
   public static currentPanel: ReaderProvider | undefined;
+  public static currentViewProvider: ReaderViewProvider | undefined;
   public static readonly viewType = "readermate";
 
   private readonly _panel: vscode.WebviewPanel;
@@ -33,17 +35,27 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     const cfg = vscode.workspace.getConfiguration('readermate');
     const displayLocation = cfg.get<string>('chapterDisplay.location', 'editor');
     
-    // Determine column based on display location
-    let column: vscode.ViewColumn;
     if (displayLocation === 'panel') {
-      // Use a side column for panel-like behavior
-      column = vscode.ViewColumn.Beside;
-    } else {
-      // Default to main editor area
-      column = vscode.window.activeTextEditor
-        ? vscode.window.activeTextEditor.viewColumn || vscode.ViewColumn.One
-        : vscode.ViewColumn.One;
+      // Use WebviewView in panel
+      if (ReaderProvider.currentViewProvider) {
+        if (book) {
+          ReaderProvider.currentViewProvider.openBook(book);
+        }
+        // Show the panel view
+        vscode.commands.executeCommand('readermateReaderPanel.focus');
+        return;
+      }
+      
+      // WebviewView will be created/managed by the view provider registration
+      // Just focus the panel if it exists
+      vscode.commands.executeCommand('readermateReaderPanel.focus');
+      return;
     }
+    
+    // Use WebviewPanel in editor (existing logic)
+    const column = vscode.window.activeTextEditor
+      ? vscode.window.activeTextEditor.viewColumn || vscode.ViewColumn.One
+      : vscode.ViewColumn.One;
 
     if (ReaderProvider.currentPanel) {
       ReaderProvider.currentPanel._panel.reveal(column);
@@ -157,18 +169,27 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     bookshelfProvider: BookshelfProvider,
     preloadConfig: PreloadConfig
   ): void {
-    if (!ReaderProvider.currentPanel) {
+    // 保存当前状态
+    let currentBook: Book | undefined;
+    let currentChapterIndex = 0;
+
+    // 从当前活动的提供者获取状态
+    if (ReaderProvider.currentPanel) {
+      currentBook = ReaderProvider.currentPanel.currentBook;
+      currentChapterIndex = ReaderProvider.currentPanel.currentChapterIndex;
+      ReaderProvider.currentPanel.dispose();
+    } else if (ReaderProvider.currentViewProvider) {
+      currentBook = ReaderProvider.currentViewProvider.currentBook;
+      currentChapterIndex = ReaderProvider.currentViewProvider.currentChapterIndex;
+      // ViewProvider 不需要手动dispose，因为它由VS Code管理
+    }
+
+    // 如果没有活动的阅读器，直接返回
+    if (!currentBook) {
       return;
     }
 
-    // 保存当前状态
-    const currentBook = ReaderProvider.currentPanel.currentBook;
-    const currentChapterIndex = ReaderProvider.currentPanel.currentChapterIndex;
-
-    // 关闭当前面板
-    ReaderProvider.currentPanel.dispose();
-
-    // 重新创建面板
+    // 重新创建面板/视图
     ReaderProvider.createOrShow(
       extensionUri,
       apiClient,
@@ -177,11 +198,16 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
       currentBook
     );
 
-    // 恢复章节位置
-    if (ReaderProvider.currentPanel && currentBook) {
-      ReaderProvider.currentPanel.currentChapterIndex = currentChapterIndex;
-      ReaderProvider.currentPanel.loadCurrentChapter();
-    }
+    // 恢复章节位置 - 延迟执行以确保新的提供者已完全初始化
+    setTimeout(() => {
+      if (ReaderProvider.currentPanel && currentBook) {
+        ReaderProvider.currentPanel.currentChapterIndex = currentChapterIndex;
+        ReaderProvider.currentPanel.loadCurrentChapter();
+      } else if (ReaderProvider.currentViewProvider && currentBook) {
+        ReaderProvider.currentViewProvider.currentChapterIndex = currentChapterIndex;
+        ReaderProvider.currentViewProvider.loadCurrentChapter();
+      }
+    }, 100);
   }
 
   /**

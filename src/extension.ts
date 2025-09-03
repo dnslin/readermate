@@ -2,12 +2,14 @@ import * as vscode from "vscode";
 import { ReaderApiClient } from "./api/readerApi";
 import { BookshelfProvider } from "./providers/bookshelfProvider";
 import { ReaderProvider } from "./providers/readerProvider";
+import { ReaderViewProvider } from "./providers/readerViewProvider";
 import { PreloadConfig } from "./preload/types";
 import { logger } from "./utils/logger";
 import { showInfo } from "./utils/messages";
 
 let apiClient: ReaderApiClient;
 let bookshelfProvider: BookshelfProvider;
+let readerViewProvider: ReaderViewProvider;
 let outputChannel: vscode.OutputChannel;
 
 export function activate(context: vscode.ExtensionContext) {
@@ -63,6 +65,24 @@ export function activate(context: vscode.ExtensionContext) {
     treeDataProvider: bookshelfProvider,
     showCollapseAll: false,
   });
+
+  // Create and register ReaderViewProvider for panel display
+  readerViewProvider = new ReaderViewProvider(
+    context.extensionUri,
+    apiClient,
+    bookshelfProvider,
+    preloadConfig
+  );
+  
+  // Register the webview view provider
+  const readerViewDisposable = vscode.window.registerWebviewViewProvider(
+    ReaderViewProvider.viewType,
+    readerViewProvider
+  );
+  context.subscriptions.push(readerViewDisposable);
+  
+  // Set the static reference for access from other parts
+  ReaderProvider.currentViewProvider = readerViewProvider;
 
   const commands = [
     vscode.commands.registerCommand("readermate.openBookshelf", () => {
@@ -222,6 +242,13 @@ export function activate(context: vscode.ExtensionContext) {
         ReaderProvider.currentPanel.updateBookshelfProvider(bookshelfProvider);
       }
 
+      // 也要更新 ReaderViewProvider
+      if (readerViewProvider) {
+        logger.info("更新ReaderViewProvider的API客户端", "Extension");
+        readerViewProvider.updateApiClient(apiClient);
+        readerViewProvider.updateBookshelfProvider(bookshelfProvider);
+      }
+
       logger.info("API客户端和书架提供者已更新", "Extension");
     }
 
@@ -252,6 +279,12 @@ export function activate(context: vscode.ExtensionContext) {
       } else {
         logger.info("当前没有活动的阅读器面板", "Extension");
       }
+
+      // 也要更新 ReaderViewProvider
+      if (readerViewProvider) {
+        logger.info("更新ReaderViewProvider的预加载配置", "Extension");
+        readerViewProvider.updatePreloadConfig(newPreloadConfig);
+      }
     }
 
     // 检查章节页显示位置配置变更
@@ -269,7 +302,7 @@ export function activate(context: vscode.ExtensionContext) {
       };
 
       // 如果有活动的阅读器，切换显示位置
-      if (ReaderProvider.currentPanel) {
+      if (ReaderProvider.currentPanel || ReaderProvider.currentViewProvider) {
         logger.info("切换阅读器显示位置", "Extension");
         ReaderProvider.switchDisplayLocation(
           context.extensionUri,

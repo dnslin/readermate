@@ -91,6 +91,13 @@
           "id": "readermateBookshelf",
           "name": "我的书架"
         }
+      ],
+      "panel": [
+        {
+          "id": "readermateReaderPanel",
+          "name": "章节阅读",
+          "type": "webview"
+        }
       ]
     },
     "menus": {
