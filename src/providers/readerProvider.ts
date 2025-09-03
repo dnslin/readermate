@@ -29,9 +29,21 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     preloadConfig: PreloadConfig,
     book?: Book
   ) {
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : undefined;
+    // Read display location config
+    const cfg = vscode.workspace.getConfiguration('readermate');
+    const displayLocation = cfg.get<string>('chapterDisplay.location', 'editor');
+    
+    // Determine column based on display location
+    let column: vscode.ViewColumn;
+    if (displayLocation === 'panel') {
+      // Use a side column for panel-like behavior
+      column = vscode.ViewColumn.Beside;
+    } else {
+      // Default to main editor area
+      column = vscode.window.activeTextEditor
+        ? vscode.window.activeTextEditor.viewColumn || vscode.ViewColumn.One
+        : vscode.ViewColumn.One;
+    }
 
     if (ReaderProvider.currentPanel) {
       ReaderProvider.currentPanel._panel.reveal(column);
@@ -42,7 +54,6 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     }
 
     // Read stealth config for initial title
-    const cfg = vscode.workspace.getConfiguration('readermate');
     const stealthEnabled = cfg.get<boolean>('stealth.enabled', true);
     const disguiseTitle = cfg.get<string>('stealth.disguiseTitle', 'Output');
     const initialTitle = stealthEnabled ? (disguiseTitle || 'Output') : '小说阅读器';
@@ -50,7 +61,7 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     const panel = vscode.window.createWebviewPanel(
       ReaderProvider.viewType,
       initialTitle,
-      column || vscode.ViewColumn.One,
+      column,
       {
         enableScripts: true,
         localResourceRoots: [
@@ -135,6 +146,42 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
   public updateBookshelfProvider(bookshelfProvider: BookshelfProvider): void {
     logger.info("更新书架提供者", "ReaderProvider");
     this.bookshelfProvider = bookshelfProvider;
+  }
+
+  /**
+   * 切换显示位置
+   */
+  public static switchDisplayLocation(
+    extensionUri: vscode.Uri,
+    apiClient: ReaderApiClient,
+    bookshelfProvider: BookshelfProvider,
+    preloadConfig: PreloadConfig
+  ): void {
+    if (!ReaderProvider.currentPanel) {
+      return;
+    }
+
+    // 保存当前状态
+    const currentBook = ReaderProvider.currentPanel.currentBook;
+    const currentChapterIndex = ReaderProvider.currentPanel.currentChapterIndex;
+
+    // 关闭当前面板
+    ReaderProvider.currentPanel.dispose();
+
+    // 重新创建面板
+    ReaderProvider.createOrShow(
+      extensionUri,
+      apiClient,
+      bookshelfProvider,
+      preloadConfig,
+      currentBook
+    );
+
+    // 恢复章节位置
+    if (ReaderProvider.currentPanel && currentBook) {
+      ReaderProvider.currentPanel.currentChapterIndex = currentChapterIndex;
+      ReaderProvider.currentPanel.loadCurrentChapter();
+    }
   }
 
   /**
@@ -249,7 +296,7 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     }
   }
 
-  private async loadCurrentChapter() {
+  public async loadCurrentChapter() {
     if (!this.chapters[this.currentChapterIndex] || !this.currentBook) {
       logger.warn(
         `无法加载章节: chapters.length=${this.chapters?.length}, currentChapterIndex=${this.currentChapterIndex}, currentBook=${!!this.currentBook}`,

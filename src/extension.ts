@@ -254,8 +254,36 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }
 
+    // 检查章节页显示位置配置变更
+    const displayLocationChanged = e.affectsConfiguration("readermate.chapterDisplay.location");
+
+    if (displayLocationChanged) {
+      logger.info("检测到章节页显示位置配置变更", "Extension");
+
+      const config = vscode.workspace.getConfiguration("readermate");
+      const newPreloadConfig: PreloadConfig = {
+        enabled: config.get<boolean>("preload.enabled", true),
+        chapterCount: config.get<number>("preload.chapterCount", 2),
+        triggerProgress: config.get<number>("preload.triggerProgress", 50),
+        maxCacheSize: config.get<number>("preload.maxCacheSize", 10),
+      };
+
+      // 如果有活动的阅读器，切换显示位置
+      if (ReaderProvider.currentPanel) {
+        logger.info("切换阅读器显示位置", "Extension");
+        ReaderProvider.switchDisplayLocation(
+          context.extensionUri,
+          apiClient,
+          bookshelfProvider,
+          newPreloadConfig
+        );
+      } else {
+        logger.info("当前没有活动的阅读器面板", "Extension");
+      }
+    }
+
     // 如果没有检测到任何相关配置变更
-    if (!apiConfigChanged && !preloadConfigChanged) {
+    if (!apiConfigChanged && !preloadConfigChanged && !displayLocationChanged) {
       logger.info("配置变更不影响ReaderMate相关设置", "Extension");
     }
   });

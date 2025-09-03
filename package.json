@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -176,6 +176,15 @@
           "minimum": 5,
           "maximum": 20,
           "description": "缓存中最大保留章节数（5-20 章）"
+        },
+        "readermate.chapterDisplay.location": {
+          "type": "string",
+          "enum": [
+            "editor",
+            "panel"
+          ],
+          "default": "editor",
+          "description": "章节页显示位置：主编辑区或底部面板"
         }
       }
     }
