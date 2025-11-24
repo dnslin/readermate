@@ -55,16 +55,24 @@ export class ReaderApiClient {
 
     return new Promise((resolve, reject) => {
       const client = url.protocol === "https:" ? https : http;
+      const requestOptions = {
+        method: options.method || "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+          ...options.headers,
+        },
+      };
+      logger.info(
+        `请求头: ${JSON.stringify(requestOptions.headers, null, 2)}`,
+        "ReaderApiClient"
+      );
       const req = client.request(
         url,
-        {
-          method: options.method || "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "VS Code Novel Reader",
-            ...options.headers,
-          },
-        },
+        requestOptions,
         (res: http.IncomingMessage) => {
           // 设置响应编码为UTF-8以正确处理中文字符
           res.setEncoding("utf8");
@@ -91,7 +99,11 @@ export class ReaderApiClient {
               }
             } catch (e) {
               const errorMessage = `JSON解析失败，原始响应: ${data}`;
-              logger.error(new Error(errorMessage), undefined, "ReaderApiClient");
+              logger.error(
+                new Error(errorMessage),
+                undefined,
+                "ReaderApiClient"
+              );
               reject(new Error(`响应解析失败: ${data.substring(0, 200)}...`));
             }
           });
@@ -175,7 +187,10 @@ export class ReaderApiClient {
       index: durChapterIndex,
     };
 
-    logger.debug(`保存阅读进度: ${JSON.stringify(progressData, null, 2)}`, "ReaderApiClient");
+    logger.debug(
+      `保存阅读进度: ${JSON.stringify(progressData, null, 2)}`,
+      "ReaderApiClient"
+    );
 
     return this.request("/saveBookProgress", {
       method: "POST",
