@@ -159,6 +159,16 @@ export function activate(context: vscode.ExtensionContext) {
         newAppendReader3Path
       );
       bookshelfProvider.updateApiClient(apiClient);
+
+      if (ReaderProvider.currentPanel) {
+        ReaderProvider.currentPanel.updateApiClient(apiClient);
+        ReaderProvider.currentPanel.updateBookshelfProvider(bookshelfProvider);
+      }
+
+      if (readerViewProvider) {
+        readerViewProvider.updateApiClient(apiClient);
+        readerViewProvider.updateBookshelfProvider(bookshelfProvider);
+      }
     }),
 
     vscode.commands.registerCommand("readermate.prevChapter", () => {

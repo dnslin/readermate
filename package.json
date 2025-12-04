@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",

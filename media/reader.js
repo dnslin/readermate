@@ -95,6 +95,7 @@
     if (contentArea) {
       contentArea.scrollTop = 0;
     }
+    window.scrollTo(0, 0);
 
     // 重置阅读进度跟踪
     lastReportedProgress = 0;
