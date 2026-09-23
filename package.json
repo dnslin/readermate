@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -83,6 +83,36 @@
         "command": "readermate.bossKey",
         "title": "老板键 / 退出阅读",
         "category": "ReaderMate"
+      },
+      {
+        "command": "readermate.commentReader.toggle",
+        "title": "切换注释伪装阅读 (Toggle)",
+        "category": "ReaderMate"
+      },
+      {
+        "command": "readermate.commentReader.holdTrigger",
+        "title": "长按透视注释阅读 (Hold to Peek)",
+        "category": "ReaderMate"
+      },
+      {
+        "command": "readermate.commentReader.next",
+        "title": "注释阅读下一句",
+        "category": "ReaderMate"
+      },
+      {
+        "command": "readermate.commentReader.prev",
+        "title": "注释阅读上一句",
+        "category": "ReaderMate"
+      },
+      {
+        "command": "readermate.commentReader.selectChapter",
+        "title": "注释阅读跳转章节 (QuickPick)",
+        "category": "ReaderMate"
+      },
+      {
+        "command": "readermate.commentReader.openBook",
+        "title": "在代码注释中阅读本书",
+        "category": "ReaderMate"
       }
     ],
     "keybindings": [
@@ -106,9 +136,34 @@
         "when": "readermate.readerActive"
       },
       {
+        "command": "readermate.commentReader.holdTrigger",
+        "key": "alt+r",
+        "when": "editorTextFocus && !findWidgetVisible"
+      },
+      {
+        "command": "readermate.commentReader.toggle",
+        "key": "alt+shift+r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "readermate.commentReader.next",
+        "key": "alt+down",
+        "when": "readermate.commentReading"
+      },
+      {
+        "command": "readermate.commentReader.prev",
+        "key": "alt+up",
+        "when": "readermate.commentReading"
+      },
+      {
+        "command": "readermate.commentReader.selectChapter",
+        "key": "alt+shift+c",
+        "when": "editorTextFocus"
+      },
+      {
         "command": "readermate.bossKey",
         "key": "escape",
-        "when": "readermate.readerFocused || activeWebviewType == 'readermate' || focusedView == 'readermateReaderPanel'"
+        "when": "readermate.readerFocused || activeWebviewType == 'readermate' || focusedView == 'readermateReaderPanel' || readermate.commentReading"
       }
     ],
     "viewsContainers": {
@@ -153,6 +208,10 @@
         },
         {
           "command": "readermate.selectChapter",
+          "when": "view == readermateBookshelf && viewItem == book"
+        },
+        {
+          "command": "readermate.commentReader.openBook",
           "when": "view == readermateBookshelf && viewItem == book"
         }
       ]
@@ -245,6 +304,34 @@
             "default": true,
             "description": "隐身模式下隐藏顶部章节翻页工具栏（使用键盘快捷键翻页更低调）",
             "order": 3
+          },
+          "readermate.commentReader.lines": {
+            "type": "number",
+            "default": 1,
+            "minimum": 1,
+            "maximum": 3,
+            "description": "注释阅读模式下同时显示的行数（推荐 1 行，最不易被察觉）",
+            "order": 4
+          },
+          "readermate.commentReader.color": {
+            "type": "string",
+            "enum": [
+              "comment",
+              "dim"
+            ],
+            "enumDescriptions": [
+              "跟随当前代码高亮主题的注释颜色（推荐，形同真实注释）",
+              "极淡暗灰色（对比度极低，更难被侧目发觉）"
+            ],
+            "default": "comment",
+            "description": "注释阅读文字伪装颜色样式",
+            "order": 5
+          },
+          "readermate.commentReader.showProgress": {
+            "type": "boolean",
+            "default": true,
+            "description": "是否在首行末尾简短标注当前章节与阅读百分比（如 [第1章 45%]）",
+            "order": 6
           }
         }
       },

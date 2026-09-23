@@ -8,6 +8,8 @@ import {
 } from "./providers/readerProvider";
 import { ReaderViewProvider } from "./providers/readerViewProvider";
 import { BaseReaderController } from "./providers/baseReaderController";
+import { CommentReaderController } from "./stealth/commentReaderController";
+import { PreloadManager } from "./preload/preloadManager";
 import { PreloadConfig } from "./preload/types";
 import { logger } from "./utils/logger";
 import { showInfo } from "./utils/messages";
@@ -15,6 +17,8 @@ import { showInfo } from "./utils/messages";
 let apiClient: ReaderApiClient;
 let bookshelfProvider: BookshelfProvider;
 let readerViewProvider: ReaderViewProvider;
+let commentReaderController: CommentReaderController;
+let preloadManager: PreloadManager;
 let outputChannel: vscode.OutputChannel;
 
 function getPreloadConfig(): PreloadConfig {
@@ -104,6 +108,14 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
+  preloadManager = new PreloadManager(apiClient, getPreloadConfig());
+  commentReaderController = new CommentReaderController(
+    context,
+    apiClient,
+    bookshelfProvider,
+    preloadManager
+  );
+  context.subscriptions.push(commentReaderController);
   const commands = [
     vscode.commands.registerCommand("readermate.openBookshelf", () => {
       logger.info("执行打开书架命令", "Extension");
@@ -114,6 +126,7 @@ export function activate(context: vscode.ExtensionContext) {
       "readermate.openReader",
       async (book?: Book, chapterIndex?: number) => {
         if (book) {
+          commentReaderController.setBook(book, chapterIndex || 0);
           ReaderProvider.createOrShow(
             context.extensionUri,
             apiClient,
@@ -141,6 +154,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         if (picked) {
+          commentReaderController.setBook(picked.book);
           ReaderProvider.createOrShow(
             context.extensionUri,
             apiClient,
@@ -232,9 +246,76 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand("readermate.bossKey", () => {
       logger.info("执行老板键命令", "Extension");
+      if (commentReaderController) {
+        commentReaderController.hide();
+      }
       BaseReaderController.handleBossKey();
     }),
 
+    vscode.commands.registerCommand("readermate.commentReader.toggle", () => {
+      logger.info("执行切换注释伪装阅读命令", "Extension");
+      commentReaderController.toggle();
+    }),
+
+    vscode.commands.registerCommand(
+      "readermate.commentReader.holdTrigger",
+      () => {
+        commentReaderController.handleHoldTrigger();
+      }
+    ),
+
+    vscode.commands.registerCommand("readermate.commentReader.next", () => {
+      commentReaderController.next();
+    }),
+
+    vscode.commands.registerCommand("readermate.commentReader.prev", () => {
+      commentReaderController.prev();
+    }),
+
+    vscode.commands.registerCommand(
+      "readermate.commentReader.selectChapter",
+      () => {
+        logger.info("执行注释阅读快速选章命令", "Extension");
+        commentReaderController.selectChapterQuickPick();
+      }
+    ),
+
+    vscode.commands.registerCommand("readermate.commentReader.hide", () => {
+      commentReaderController.hide();
+    }),
+
+    vscode.commands.registerCommand(
+      "readermate.commentReader.openBook",
+      async (book?: Book, chapterIndex?: number) => {
+        if (book) {
+          await commentReaderController.setBook(book, chapterIndex || 0);
+          await commentReaderController.show();
+          return;
+        }
+
+        const books = bookshelfProvider.getBooks();
+        if (books.length === 0) {
+          vscode.window.showInformationMessage(
+            "书架中暂无书籍，请先在 Reader3 添加书籍或刷新书架"
+          );
+          return;
+        }
+
+        const picked = await vscode.window.showQuickPick(
+          books.map((b) => ({
+            label: b.name,
+            description: `${b.author} · ${b.lastChapter || ""}`,
+            book: b,
+          })),
+          { placeHolder: "选择要在代码注释中阅读的书籍" }
+        );
+
+        if (picked) {
+          await commentReaderController.setBook(picked.book);
+          await commentReaderController.show();
+        }
+      }
+    ),
     vscode.commands.registerCommand("readermate.closePanelIfOpen", () => {
       if (ReaderProvider.currentPanel) {
         ReaderProvider.currentPanel.dispose();
@@ -358,6 +439,10 @@ export function activate(context: vscode.ExtensionContext) {
           readerViewProvider.updateApiClient(apiClient);
           readerViewProvider.updateBookshelfProvider(bookshelfProvider);
         }
+
+        if (commentReaderController) {
+          commentReaderController.updateApiClient(apiClient);
+        }
       }
 
       const preloadConfigChanged =
@@ -373,6 +458,9 @@ export function activate(context: vscode.ExtensionContext) {
         }
         if (readerViewProvider) {
           readerViewProvider.updatePreloadConfig(newPreload);
+        }
+        if (commentReaderController) {
+          commentReaderController.updatePreloadConfig(newPreload);
         }
       }
 
