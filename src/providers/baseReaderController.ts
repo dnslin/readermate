@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ReaderApiClient } from "../api/readerApi";
-import { Book, Chapter } from "../api/types";
+import { Book, Chapter, WebviewIncomingMessage, WebviewOutgoingMessage } from "../api/types";
 import { BookshelfProvider } from "./bookshelfProvider";
 import { PreloadManager } from "../preload/preloadManager";
 import { PreloadConfig, ReadingProgressEvent } from "../preload/types";
@@ -326,9 +326,13 @@ export abstract class BaseReaderController {
     }
   }
 
-  protected handleWebviewMessage(message: any): void {
+  protected handleWebviewMessage(message: unknown): void {
+    if (!message || typeof message !== "object" || !("command" in message)) {
+      return;
+    }
+    const msg = message as WebviewIncomingMessage;
     const webview = this.getWebview();
-    switch (message.command) {
+    switch (msg.command) {
       case "prevChapter":
         this.prevChapter();
         break;
@@ -342,7 +346,9 @@ export abstract class BaseReaderController {
         this.loadCurrentChapter();
         break;
       case "readingProgress":
-        this.handleReadingProgress(message.progress);
+        if (typeof msg.progress === "number") {
+          this.handleReadingProgress(msg.progress);
+        }
         break;
       case "focus":
         vscode.commands.executeCommand(
@@ -362,10 +368,11 @@ export abstract class BaseReaderController {
         this._isWebviewReady = true;
         this.applySettings();
         if (this._pendingChapterContent && webview) {
-          webview.postMessage({
+          const updateMsg: WebviewOutgoingMessage = {
             command: "updateChapter",
             data: this._pendingChapterContent,
-          });
+          };
+          webview.postMessage(updateMsg);
         } else if (this.currentBook && this.chapters.length > 0) {
           this.loadCurrentChapter();
         }

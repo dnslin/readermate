@@ -220,6 +220,11 @@ export class ReaderProvider extends BaseReaderController {
   }
 }
 
+export interface ReaderPanelState {
+  book?: Book;
+  chapterIndex?: number;
+}
+
 export class ReaderPanelSerializer implements vscode.WebviewPanelSerializer {
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -230,8 +235,8 @@ export class ReaderPanelSerializer implements vscode.WebviewPanelSerializer {
 
   async deserializeWebviewPanel(
     webviewPanel: vscode.WebviewPanel,
-    state: any
-  ) {
+    state: unknown
+  ): Promise<void> {
     logger.info("正在恢复阅读器面板", "ReaderPanelSerializer");
     ReaderProvider.revive(
       webviewPanel,
@@ -241,9 +246,13 @@ export class ReaderPanelSerializer implements vscode.WebviewPanelSerializer {
       this.getPreloadConfig()
     );
 
-    if (state && state.book) {
-      if (ReaderProvider.currentPanel) {
-        ReaderProvider.currentPanel.openBook(state.book, state.chapterIndex);
+    if (state && typeof state === "object") {
+      const panelState = state as ReaderPanelState;
+      if (panelState.book && ReaderProvider.currentPanel) {
+        ReaderProvider.currentPanel.openBook(
+          panelState.book,
+          panelState.chapterIndex
+        );
       }
     }
   }

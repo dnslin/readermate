@@ -22,3 +22,49 @@ export interface BookContent {
   nextUrl?: string;
   prevUrl?: string;
 }
+
+export interface UserInfo {
+  username?: string;
+  [key: string]: unknown;
+}
+
+export interface ApiRequestOptions {
+  method?: "GET" | "POST" | string;
+  headers?: Record<string, string>;
+  data?: unknown;
+}
+
+export type WebviewIncomingMessage =
+  | { command: "prevChapter" }
+  | { command: "nextChapter" }
+  | { command: "selectChapter" }
+  | { command: "retry" }
+  | { command: "readingProgress"; progress: number }
+  | { command: "focus" }
+  | { command: "blur" }
+  | { command: "ready" }
+  | { command: "panic" };
+
+export type WebviewOutgoingMessage =
+  | { command: "loading"; data?: { title?: string } }
+  | { command: "error"; data: { message: string } }
+  | {
+      command: "updateChapter";
+      data: {
+        title: string;
+        content: string;
+        chapterIndex: number;
+        totalChapters: number;
+        hasPrev: boolean;
+        hasNext: boolean;
+      };
+    }
+  | {
+      command: "applyStealth";
+      data: {
+        stealthEnabled: boolean;
+        hideToolbar: boolean;
+        fontSize: number;
+        lineHeight: number;
+      };
+    };

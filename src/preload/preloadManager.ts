@@ -261,7 +261,7 @@ export class PreloadManager {
    */
   private async handlePreloadError(
     task: PreloadTask,
-    error: any
+    error: unknown
   ): Promise<void> {
     const key = this.generateTaskKey(task.bookUrl, task.chapterIndex);
     const attempts = this.retryAttempts.get(key) || 0;

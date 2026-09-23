@@ -2,7 +2,7 @@ import * as https from "node:https";
 import * as http from "node:http";
 import { URL } from "node:url";
 import * as vscode from "vscode";
-import { Book, Chapter, BookContent } from "./types";
+import { Book, Chapter, BookContent, UserInfo, ApiRequestOptions } from "./types";
 import { logger } from "../utils/logger";
 
 export class ReaderApiClient {
@@ -29,7 +29,10 @@ export class ReaderApiClient {
     logger.info(`创建API客户端，baseUrl: ${this.baseUrl}`, "ReaderApiClient");
   }
 
-  private async request(path: string, options: any = {}): Promise<any> {
+  private async request<T = unknown>(
+    path: string,
+    options: ApiRequestOptions = {}
+  ): Promise<T> {
     // 使用URL构造函数正确拼接路径，path应该以斜杠开头
     const apiPath = path.startsWith("/") ? path.substring(1) : path;
     const url = new URL(apiPath, this.baseUrl);
@@ -53,9 +56,9 @@ export class ReaderApiClient {
       logger.debug(postDataMessage, "ReaderApiClient");
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       const client = url.protocol === "https:" ? https : http;
-      const requestOptions = {
+      const requestOptions: https.RequestOptions = {
         method: options.method || "GET",
         headers: {
           "Content-Type": "application/json",
@@ -143,17 +146,17 @@ export class ReaderApiClient {
     });
   }
 
-  async getUserInfo(): Promise<any> {
-    return this.request("/getUserInfo");
+  async getUserInfo(): Promise<UserInfo> {
+    return this.request<UserInfo>("/getUserInfo");
   }
 
   async getBookshelf(): Promise<Book[]> {
-    const result = await this.request("/getBookshelf");
+    const result = await this.request<Book[]>("/getBookshelf");
     return result || [];
   }
 
   async getChapterList(bookUrl: string): Promise<Chapter[]> {
-    const result = await this.request(
+    const result = await this.request<Chapter[]>(
       `/getChapterList?url=${encodeURIComponent(bookUrl)}`
     );
     return result || [];
@@ -163,7 +166,7 @@ export class ReaderApiClient {
     bookUrl: string,
     chapterIndex: number
   ): Promise<BookContent> {
-    const result = await this.request(
+    const result = await this.request<unknown>(
       `/getBookContent?url=${encodeURIComponent(bookUrl)}&index=${chapterIndex}`
     );
 
@@ -179,9 +182,13 @@ export class ReaderApiClient {
     if (typeof result === "string") {
       contentText = result;
     } else if (result && typeof result === "object") {
-      contentText = result.content || result.text || "";
+      const obj = result as Record<string, unknown>;
+      if (typeof obj.content === "string") {
+        contentText = obj.content;
+      } else if (typeof obj.text === "string") {
+        contentText = obj.text;
+      }
     }
-
     const bookContent: BookContent = {
       title: `第${chapterIndex + 1}章`, // 使用章节索引生成标题
       content: contentText,

@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -157,94 +157,134 @@
         }
       ]
     },
-    "configuration": {
-      "title": "ReaderMate",
-      "properties": {
-        "readermate.reader.fontSize": {
-          "type": "number",
-          "default": 16,
-          "minimum": 14,
-          "maximum": 22,
-          "description": "阅读内容字号（px），兼顾可读性"
-        },
-        "readermate.reader.lineHeight": {
-          "type": "number",
-          "default": 1.7,
-          "minimum": 1.2,
-          "maximum": 2.5,
-          "description": "阅读正文行高倍数（如 1.7）"
-        },
-        "readermate.stealth.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "启用隐身模式，便于低调阅读"
-        },
-        "readermate.stealth.hideToolbar": {
-          "type": "boolean",
-          "default": true,
-          "description": "隐身模式下隐藏工具栏（使用键盘导航）"
-        },
-        "readermate.stealth.disguiseTitle": {
-          "type": "string",
-          "default": "输出",
-          "description": "隐身模式启用时的标签标题"
-        },
-        "readermate.serverUrl": {
-          "type": "string",
-          "default": "https://reader.me",
-          "description": "Reader 服务器基础地址"
-        },
-        "readermate.appendReader3Path": {
-          "type": "boolean",
-          "default": true,
-          "description": "自动在服务器地址后追加 /reader3 路径"
-        },
-        "readermate.username": {
-          "type": "string",
-          "description": "用户名"
-        },
-        "readermate.token": {
-          "type": "string",
-          "description": "访问令牌"
-        },
-        "readermate.preload.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "启用章节预加载功能"
-        },
-        "readermate.preload.chapterCount": {
-          "type": "number",
-          "default": 2,
-          "minimum": 1,
-          "maximum": 5,
-          "description": "预加载的章节数（1-5 章）"
-        },
-        "readermate.preload.triggerProgress": {
-          "type": "number",
-          "default": 50,
-          "minimum": 30,
-          "maximum": 95,
-          "description": "达到多少阅读进度时开始预加载（30%-95%）"
-        },
-        "readermate.preload.maxCacheSize": {
-          "type": "number",
-          "default": 10,
-          "minimum": 5,
-          "maximum": 20,
-          "description": "缓存中最大保留章节数（5-20 章）"
-        },
-        "readermate.chapterDisplay.location": {
-          "type": "string",
-          "enum": [
-            "sidebar",
-            "editor",
-            "panel"
-          ],
-          "default": "sidebar",
-          "description": "章节页显示位置：侧边栏小卡片(sidebar)、主编辑区(editor)或底部面板(panel)"
+    "configuration": [
+      {
+        "title": "ReaderMate - 服务器与账号",
+        "order": 1,
+        "properties": {
+          "readermate.serverUrl": {
+            "type": "string",
+            "default": "https://reader.me",
+            "description": "Reader3 服务器的基础 API 地址（例如 https://reader.me 或自建服务器地址）",
+            "order": 1
+          },
+          "readermate.username": {
+            "type": "string",
+            "description": "Reader3 账户用户名",
+            "order": 2
+          },
+          "readermate.token": {
+            "type": "string",
+            "description": "Reader3 访问令牌（Access Token）",
+            "order": 3
+          },
+          "readermate.appendReader3Path": {
+            "type": "boolean",
+            "default": true,
+            "description": "是否自动在服务器地址后追加 /reader3 路径（符合 Reader3 官方标准规范）",
+            "order": 4
+          }
+        }
+      },
+      {
+        "title": "ReaderMate - 阅读与界面",
+        "order": 2,
+        "properties": {
+          "readermate.chapterDisplay.location": {
+            "type": "string",
+            "enum": [
+              "sidebar",
+              "editor",
+              "panel"
+            ],
+            "enumDescriptions": [
+              "侧边栏小卡片（推荐，紧凑沉浸）",
+              "主编辑区独立标签页",
+              "底部面板（与终端/输出并列）"
+            ],
+            "default": "sidebar",
+            "description": "阅读器显示位置：侧边栏小卡片、主编辑区标签页或底部面板",
+            "order": 1
+          },
+          "readermate.reader.fontSize": {
+            "type": "number",
+            "default": 16,
+            "minimum": 12,
+            "maximum": 24,
+            "description": "正文字体大小（单位：像素 px，默认 16px）",
+            "order": 2
+          },
+          "readermate.reader.lineHeight": {
+            "type": "number",
+            "default": 1.7,
+            "minimum": 1.2,
+            "maximum": 2.5,
+            "description": "正文行高倍数（如 1.7 倍行高，阅读舒适度更佳）",
+            "order": 3
+          }
+        }
+      },
+      {
+        "title": "ReaderMate - 摸鱼与隐身",
+        "order": 3,
+        "properties": {
+          "readermate.stealth.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "启用摸鱼隐身模式（自动伪装标题、字体与界面细节）",
+            "order": 1
+          },
+          "readermate.stealth.disguiseTitle": {
+            "type": "string",
+            "default": "输出",
+            "description": "隐身模式下的标签页/窗口伪装标题（默认伪装为'输出'）",
+            "order": 2
+          },
+          "readermate.stealth.hideToolbar": {
+            "type": "boolean",
+            "default": true,
+            "description": "隐身模式下隐藏顶部章节翻页工具栏（使用键盘快捷键翻页更低调）",
+            "order": 3
+          }
+        }
+      },
+      {
+        "title": "ReaderMate - 预加载与缓存",
+        "order": 4,
+        "properties": {
+          "readermate.preload.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "启用后续章节后台静默预加载功能（翻页秒开无等待）",
+            "order": 1
+          },
+          "readermate.preload.chapterCount": {
+            "type": "number",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 5,
+            "description": "提前后台预加载的后续章节数量（1-5 章）",
+            "order": 2
+          },
+          "readermate.preload.triggerProgress": {
+            "type": "number",
+            "default": 50,
+            "minimum": 30,
+            "maximum": 95,
+            "description": "当前章节阅读进度达到百分之多少时触发下一章预加载（30%-95%）",
+            "order": 3
+          },
+          "readermate.preload.maxCacheSize": {
+            "type": "number",
+            "default": 10,
+            "minimum": 5,
+            "maximum": 20,
+            "description": "本地内存缓存中最多保留的章节数（5-20 章）",
+            "order": 4
+          }
         }
       }
-    }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
