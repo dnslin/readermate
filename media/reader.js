@@ -88,6 +88,13 @@
         }
       }
   });
+  window.addEventListener("focus", () => {
+    vscode.postMessage({ command: "focus" });
+  });
+
+  window.addEventListener("blur", () => {
+    vscode.postMessage({ command: "blur" });
+  });
 
   window.addEventListener("message", (event) => {
     const message = event.data;

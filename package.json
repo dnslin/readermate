@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -78,6 +78,11 @@
         "command": "readermate.refreshBookshelf",
         "title": "刷新书架",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "readermate.bossKey",
+        "title": "老板键 / 退出阅读",
+        "category": "ReaderMate"
       }
     ],
     "keybindings": [
@@ -99,6 +104,11 @@
         "command": "readermate.selectChapter",
         "key": "ctrl+shift+c",
         "when": "readermate.readerActive"
+      },
+      {
+        "command": "readermate.bossKey",
+        "key": "escape",
+        "when": "readermate.readerFocused || activeWebviewType == 'readermate' || focusedView == 'readermateReaderPanel'"
       }
     ],
     "viewsContainers": {

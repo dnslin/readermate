@@ -7,6 +7,7 @@ import {
   ReaderPanelSerializer,
 } from "./providers/readerProvider";
 import { ReaderViewProvider } from "./providers/readerViewProvider";
+import { BaseReaderController } from "./providers/baseReaderController";
 import { PreloadConfig } from "./preload/types";
 import { logger } from "./utils/logger";
 import { showInfo } from "./utils/messages";
@@ -226,6 +227,17 @@ export function activate(context: vscode.ExtensionContext) {
         ReaderProvider.currentPanel.nextChapter();
       } else if (readerViewProvider) {
         readerViewProvider.nextChapter();
+      }
+    }),
+
+    vscode.commands.registerCommand("readermate.bossKey", () => {
+      logger.info("执行老板键命令", "Extension");
+      BaseReaderController.handleBossKey();
+    }),
+
+    vscode.commands.registerCommand("readermate.closePanelIfOpen", () => {
+      if (ReaderProvider.currentPanel) {
+        ReaderProvider.currentPanel.dispose();
       }
     }),
 
