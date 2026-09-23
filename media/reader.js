@@ -1,63 +1,109 @@
 (function () {
-  console.log("reader.js开始执行");
   const vscode = acquireVsCodeApi();
 
   const prevBtn = document.getElementById("prev-btn");
   const nextBtn = document.getElementById("next-btn");
+  const catalogBtn = document.getElementById("catalog-btn");
   const chapterInfo = document.getElementById("chapter-info");
   const chapterTitle = document.getElementById("chapter-title");
   const chapterContent = document.getElementById("chapter-content");
+  const loadingBox = document.getElementById("loading-box");
+  const loadingText = document.getElementById("loading-text");
+  const errorBox = document.getElementById("error-box");
+  const errorText = document.getElementById("error-text");
+  const retryBtn = document.getElementById("retry-btn");
+  const chapterBody = document.getElementById("chapter-body");
+  const contentArea = document.querySelector(".content-area");
 
-  // 阅读进度跟踪变量
   let lastReportedProgress = 0;
-  const PROGRESS_REPORT_THRESHOLD = 5; // 每5%报告一次
+  const PROGRESS_REPORT_THRESHOLD = 5;
 
-  prevBtn.addEventListener("click", () => {
-    vscode.postMessage({ command: "prevChapter" });
-  });
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      vscode.postMessage({ command: "prevChapter" });
+    });
+  }
 
-  nextBtn.addEventListener("click", () => {
-    vscode.postMessage({ command: "nextChapter" });
-  });
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      vscode.postMessage({ command: "nextChapter" });
+    });
+  }
+
+  if (catalogBtn) {
+    catalogBtn.addEventListener("click", () => {
+      vscode.postMessage({ command: "selectChapter" });
+    });
+  }
+
+  if (retryBtn) {
+    retryBtn.addEventListener("click", () => {
+      vscode.postMessage({ command: "retry" });
+    });
+  }
 
   document.addEventListener("keydown", (e) => {
-    // Quick-close boss key: Esc or Ctrl+W
-    if (e.key === 'Escape') {
+    // 老板键：Esc 或 Ctrl+W
+    if (e.key === "Escape" || (e.ctrlKey && (e.key === "w" || e.key === "W"))) {
       e.preventDefault();
-      vscode.postMessage({ command: 'panic' });
+      vscode.postMessage({ command: "panic" });
       return;
     }
 
+    // 目录快捷键：Alt+C 或 Ctrl+Shift+C
+    if (
+      (e.altKey && (e.key === "c" || e.key === "C")) ||
+      (e.ctrlKey && e.shiftKey && (e.key === "c" || e.key === "C"))
+    ) {
+      e.preventDefault();
+      vscode.postMessage({ command: "selectChapter" });
+      return;
+    }
+
+    // 翻页快捷键：Ctrl+左右方向键
     if (e.ctrlKey) {
-      if (e.key === 'w' || e.key === 'W') {
+      if (e.key === "ArrowLeft") {
         e.preventDefault();
-        vscode.postMessage({ command: 'panic' });
-        return;
+        if (prevBtn && !prevBtn.disabled) {
+          vscode.postMessage({ command: "prevChapter" });
+        }
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        if (nextBtn && !nextBtn.disabled) {
+          vscode.postMessage({ command: "nextChapter" });
+        }
       }
-      switch (e.key) {
-        case "ArrowLeft":
+    } else {
+      // 单键翻页快捷键：[ 或 ]
+      const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
+      if (tag !== "input" && tag !== "textarea") {
+        if (e.key === "[") {
           e.preventDefault();
-          if (!prevBtn.disabled) {
+          if (prevBtn && !prevBtn.disabled) {
             vscode.postMessage({ command: "prevChapter" });
           }
-          break;
-        case "ArrowRight":
+        } else if (e.key === "]") {
           e.preventDefault();
-          if (!nextBtn.disabled) {
+          if (nextBtn && !nextBtn.disabled) {
             vscode.postMessage({ command: "nextChapter" });
           }
-          break;
+        }
       }
     }
   });
 
   window.addEventListener("message", (event) => {
     const message = event.data;
-    console.log("WebView收到消息:", message);
+    if (!message || !message.command) return;
 
     switch (message.command) {
+      case "loading":
+        showLoading(message.data?.title);
+        break;
+      case "error":
+        showError(message.data?.message);
+        break;
       case "updateChapter":
-        console.log("开始更新章节:", message.data);
         updateChapter(message.data);
         break;
       case "applyStealth":
@@ -66,138 +112,123 @@
     }
   });
 
-  function updateChapter(data) {
-    console.log("updateChapter被调用，数据:", data);
-    console.log("章节标题:", data.title);
-    console.log("章节内容长度:", data.content?.length || 0);
+  function showLoading(title) {
+    if (loadingBox) {
+      loadingBox.style.display = "flex";
+      if (loadingText) {
+        loadingText.textContent = title ? `正在加载《${title}》...` : "正在加载章节内容...";
+      }
+    }
+    if (errorBox) {
+      errorBox.style.display = "none";
+    }
+  }
 
-    if (!chapterTitle || !chapterContent || !chapterInfo) {
-      console.error('[ReaderMate] 缺少必要的DOM元素: ', {
-        hasTitle: !!chapterTitle,
-        hasContent: !!chapterContent,
-        hasInfo: !!chapterInfo,
-      });
-      return;
+  function showError(msg) {
+    if (loadingBox) {
+      loadingBox.style.display = "none";
+    }
+    if (errorBox) {
+      errorBox.style.display = "flex";
+      if (errorText) {
+        errorText.textContent = msg || "加载失败，请重试";
+      }
+    }
+  }
+
+  function updateChapter(data) {
+    if (!data) return;
+
+    if (loadingBox) loadingBox.style.display = "none";
+    if (errorBox) errorBox.style.display = "none";
+    if (chapterBody) chapterBody.style.display = "block";
+
+    if (chapterTitle) {
+      chapterTitle.textContent = data.title || "无标题";
     }
 
-    chapterTitle.textContent = data.title || "无标题";
-    const formattedContent = formatContent(data.content);
-    console.log("格式化后的内容长度:", formattedContent.length);
+    if (chapterContent) {
+      chapterContent.innerHTML = formatContent(data.content);
+    }
 
-    chapterContent.innerHTML = formattedContent;
-    chapterInfo.textContent = `${data.chapterIndex + 1} / ${data.totalChapters
-      }`;
+    if (chapterInfo) {
+      chapterInfo.textContent = `${data.chapterIndex + 1} / ${data.totalChapters}`;
+    }
 
-    prevBtn.disabled = !data.hasPrev;
-    nextBtn.disabled = !data.hasNext;
+    if (prevBtn) prevBtn.disabled = !data.hasPrev;
+    if (nextBtn) nextBtn.disabled = !data.hasNext;
 
-    const contentArea = document.querySelector(".content-area");
     if (contentArea) {
       contentArea.scrollTop = 0;
     }
     window.scrollTo(0, 0);
 
-    // 重置阅读进度跟踪
     lastReportedProgress = 0;
 
-    // 添加滚动监听器（如果还没有添加）
-    if (contentArea && !contentArea.hasAttribute('data-scroll-listener')) {
-      contentArea.addEventListener('scroll', throttle(trackReadingProgress, 500));
-      contentArea.setAttribute('data-scroll-listener', 'true');
-      console.log('[滚动调试] 已添加滚动监听器');
+    if (contentArea && !contentArea.hasAttribute("data-scroll-listener")) {
+      contentArea.addEventListener("scroll", throttle(trackReadingProgress, 400));
+      contentArea.setAttribute("data-scroll-listener", "true");
     }
-
-    console.log("章节更新完成");
   }
 
   function applyStealth(config) {
     try {
-      const { stealthEnabled, hideToolbar, fontSize } = config || {};
-      if (typeof fontSize === 'number') {
-        document.documentElement.style.setProperty('--reader-font-size', fontSize + 'px');
+      const { stealthEnabled, hideToolbar, fontSize, lineHeight } = config || {};
+      if (typeof fontSize === "number") {
+        document.documentElement.style.setProperty("--reader-font-size", `${fontSize}px`);
       }
+      if (typeof lineHeight === "number") {
+        document.documentElement.style.setProperty("--reader-line-height", String(lineHeight));
+      }
+
       if (stealthEnabled) {
-        document.body.classList.add('stealth');
-        if (!hideToolbar) {
-          // Keep toolbar visible if explicitly requested
-          const tb = document.querySelector('.toolbar');
-          if (tb) tb.style.display = '';
+        document.body.classList.add("stealth");
+        const tb = document.querySelector(".toolbar");
+        if (tb) {
+          tb.style.display = hideToolbar ? "none" : "";
         }
       } else {
-        document.body.classList.remove('stealth');
+        document.body.classList.remove("stealth");
+        const tb = document.querySelector(".toolbar");
+        if (tb) {
+          tb.style.display = "";
+        }
       }
-      console.log('[Stealth] applied:', config);
     } catch (e) {
-      console.log('[Stealth] failed to apply:', e);
+      console.error("[ReaderMate] applyStealth failed:", e);
     }
   }
 
-  /**
-   * 跟踪阅读进度
-   */
   function trackReadingProgress() {
-    const contentArea = document.querySelector('.content-area');
-    const content = document.getElementById('chapter-content');
-
-    if (!contentArea || !content) {
-      console.log('[滚动调试] 未找到内容区域或章节内容元素');
-      return;
-    }
+    if (!contentArea) return;
 
     const scrollTop = contentArea.scrollTop;
     const scrollHeight = contentArea.scrollHeight;
     const clientHeight = contentArea.clientHeight;
     const maxScrollTop = scrollHeight - clientHeight;
 
-    console.log(`[滚动调试] scrollTop: ${scrollTop}, scrollHeight: ${scrollHeight}, clientHeight: ${clientHeight}, maxScrollTop: ${maxScrollTop}`);
-
-    // 避免除零错误
-    if (maxScrollTop <= 0) {
-      console.log('[滚动调试] maxScrollTop <= 0，无法计算进度');
-      return;
-    }
-
+    if (maxScrollTop <= 0) return;
     const progress = Math.min(Math.round((scrollTop / maxScrollTop) * 100), 100);
-
-    console.log(`[滚动调试] 计算进度: ${scrollTop} / ${maxScrollTop} * 100 = ${progress}%`);
-
-    // 只有当进度变化超过阈值时才报告
     if (Math.abs(progress - lastReportedProgress) >= PROGRESS_REPORT_THRESHOLD) {
       lastReportedProgress = progress;
-      console.log(`[滚动调试] 阅读进度更新: ${progress}% (上次报告: ${lastReportedProgress - (progress - lastReportedProgress)}%)`);
-
       vscode.postMessage({
-        command: 'readingProgress',
-        progress: progress
+        command: "readingProgress",
+        progress: progress,
       });
-    } else {
-      console.log(`[滚动调试] 进度变化不足阈值: ${Math.abs(progress - lastReportedProgress)}% < ${PROGRESS_REPORT_THRESHOLD}%`);
     }
   }
 
-  /**
-   * 节流函数
-   * @param {Function} func 要节流的函数
-   * @param {number} delay 延迟时间（毫秒）
-   * @returns {Function} 节流后的函数
-   */
   function throttle(func, delay) {
     let lastCall = 0;
     let timeoutId = null;
 
     return function (...args) {
       const now = Date.now();
-
       if (now - lastCall >= delay) {
-        // 立即执行
         lastCall = now;
         func.apply(this, args);
       } else {
-        // 延迟执行
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-
+        clearTimeout(timeoutId);
         timeoutId = setTimeout(() => {
           lastCall = Date.now();
           func.apply(this, args);
@@ -208,26 +239,26 @@
   }
 
   function formatContent(content) {
-    console.log("formatContent被调用，原始内容:", content);
-    if (!content) {
-      console.log("内容为空，返回空字符串");
-      return "";
-    }
+    if (!content) return "<p>本章内容为空</p>";
 
     const lines = content.split("\n");
-    console.log("分割后的行数:", lines.length);
-
     const filteredLines = lines.filter((line) => line.trim());
-    console.log("过滤后的行数:", filteredLines.length);
+    if (filteredLines.length === 0) return "<p>本章内容为空</p>";
 
-    const formattedLines = filteredLines.map((line) => `<p>${line.trim()}</p>`);
-    const result = formattedLines.join("");
-
-    console.log("格式化完成，最终HTML长度:", result.length);
-    return result;
+    return filteredLines
+      .map((line) => `<p>${escapeHtml(line.trim())}</p>`)
+      .join("");
   }
 
-  console.log("准备发送ready消息");
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  // 通知插件 WebView 准备就绪
   vscode.postMessage({ command: "ready" });
-  console.log("ready消息已发送");
 })();

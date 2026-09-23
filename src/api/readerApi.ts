@@ -84,27 +84,46 @@ export class ReaderApiClient {
             logger.debug(statusMessage, "ReaderApiClient");
             logger.debug(contentMessage, "ReaderApiClient");
 
+            if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+              if (res.statusCode === 401) {
+                reject(new Error("身份认证失败 (HTTP 401)，请检查用户名和 Token 是否正确"));
+                return;
+              }
+              if (res.statusCode === 403) {
+                reject(new Error("访问被拒绝 (HTTP 403)，请确认 Token 权限或服务器防火墙"));
+                return;
+              }
+              if (res.statusCode === 404) {
+                reject(new Error("接口未找到 (HTTP 404)，请检查服务器地址或路径前缀"));
+                return;
+              }
+              if (res.statusCode >= 500) {
+                reject(new Error(`服务器内部错误 (HTTP ${res.statusCode})，请检查 Reader3 后端日志`));
+                return;
+              }
+            }
+
+            const trimmed = data.trim();
+            if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+              reject(new Error(`服务器返回了 HTML 页面而非接口数据 (HTTP ${res.statusCode})，请确认 Reader3 服务器基础地址是否正确`));
+              return;
+            }
+
             try {
               const result = JSON.parse(data);
-              // 检查是否是包装格式的响应
-              if (result.hasOwnProperty("isSuccess")) {
+              if (result && typeof result === "object" && "isSuccess" in result) {
                 if (result.isSuccess) {
                   resolve(result.data);
                 } else {
                   reject(new Error(result.errorMsg || "请求失败"));
                 }
               } else {
-                // 直接返回解析后的数据
                 resolve(result);
               }
-            } catch (e) {
-              const errorMessage = `JSON解析失败，原始响应: ${data}`;
-              logger.error(
-                new Error(errorMessage),
-                undefined,
-                "ReaderApiClient"
-              );
-              reject(new Error(`响应解析失败: ${data.substring(0, 200)}...`));
+            } catch {
+              const errorMessage = `JSON解析失败，原始响应: ${data.substring(0, 120)}`;
+              logger.error(new Error(errorMessage), undefined, "ReaderApiClient");
+              reject(new Error(`响应数据解析失败 (HTTP ${res.statusCode || "未知"})`));
             }
           });
         }

@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -20,8 +20,16 @@
     "text"
   ],
   "activationEvents": [
+    "onView:readermateBookshelf",
+    "onView:readermateReaderPanel",
     "onCommand:readermate.openBookshelf",
-    "onView:readermateBookshelf"
+    "onCommand:readermate.openReader",
+    "onCommand:readermate.selectChapter",
+    "onCommand:readermate.configure",
+    "onCommand:readermate.showConfig",
+    "onCommand:readermate.refreshBookshelf",
+    "onCommand:readermate.prevChapter",
+    "onCommand:readermate.nextChapter"
   ],
   "main": "./out/extension.js",
   "repository": {
@@ -55,6 +63,18 @@
         "title": "下一章"
       },
       {
+        "command": "readermate.selectChapter",
+        "title": "选择章节 / 打开目录",
+        "category": "ReaderMate",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "readermate.configure",
+        "title": "配置 ReaderMate",
+        "category": "ReaderMate",
+        "icon": "$(gear)"
+      },
+      {
         "command": "readermate.refreshBookshelf",
         "title": "刷新书架",
         "icon": "$(refresh)"
@@ -74,6 +94,11 @@
         "command": "readermate.nextChapter",
         "key": "ctrl+right",
         "when": "readermate.readerActive"
+      },
+      {
+        "command": "readermate.selectChapter",
+        "key": "ctrl+shift+c",
+        "when": "readermate.readerActive"
       }
     ],
     "viewsContainers": {
@@ -81,7 +106,7 @@
         {
           "id": "readermate",
           "title": "ReaderMate",
-          "icon": "$(book)"
+          "icon": "icon.png"
         }
       ]
     },
@@ -90,9 +115,7 @@
         {
           "id": "readermateBookshelf",
           "name": "我的书架"
-        }
-      ],
-      "panel": [
+        },
         {
           "id": "readermateReaderPanel",
           "name": "章节阅读",
@@ -106,11 +129,20 @@
           "command": "readermate.refreshBookshelf",
           "when": "view == readermateBookshelf",
           "group": "navigation"
+        },
+        {
+          "command": "readermate.selectChapter",
+          "when": "view == readermateBookshelf",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "readermate.openReader",
+          "when": "view == readermateBookshelf && viewItem == book"
+        },
+        {
+          "command": "readermate.selectChapter",
           "when": "view == readermateBookshelf && viewItem == book"
         }
       ]
@@ -124,6 +156,13 @@
           "minimum": 14,
           "maximum": 22,
           "description": "阅读内容字号（px），兼顾可读性"
+        },
+        "readermate.reader.lineHeight": {
+          "type": "number",
+          "default": 1.7,
+          "minimum": 1.2,
+          "maximum": 2.5,
+          "description": "阅读正文行高倍数（如 1.7）"
         },
         "readermate.stealth.enabled": {
           "type": "boolean",
@@ -187,11 +226,12 @@
         "readermate.chapterDisplay.location": {
           "type": "string",
           "enum": [
+            "sidebar",
             "editor",
             "panel"
           ],
-          "default": "editor",
-          "description": "章节页显示位置：主编辑区或底部面板"
+          "default": "sidebar",
+          "description": "章节页显示位置：侧边栏小卡片(sidebar)、主编辑区(editor)或底部面板(panel)"
         }
       }
     }

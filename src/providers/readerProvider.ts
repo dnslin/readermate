@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ReaderApiClient } from "../api/readerApi";
-import { Book, Chapter } from "../api/types";
+import { Book, Chapter, BookContent } from "../api/types";
 import { BookshelfProvider } from "./bookshelfProvider";
 import { ReaderViewProvider } from "./readerViewProvider";
 import { PreloadManager } from "../preload/preloadManager";
@@ -8,7 +8,17 @@ import { PreloadConfig, ReadingProgressEvent } from "../preload/types";
 import { logger } from "../utils/logger";
 import { showFriendlyError } from "../utils/messages";
 
-export class ReaderProvider implements vscode.WebviewPanelSerializer {
+function getNonce(): string {
+  let text = "";
+  const possible =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
+
+export class ReaderProvider {
   public static currentPanel: ReaderProvider | undefined;
   public static currentViewProvider: ReaderViewProvider | undefined;
   public static readonly viewType = "readermate";
@@ -17,42 +27,45 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
 
-  private currentBook?: Book;
-  private chapters: Chapter[] = [];
-  private currentChapterIndex = 0;
+  public currentBook?: Book;
+  public chapters: Chapter[] = [];
+  public currentChapterIndex = 0;
   private apiClient: ReaderApiClient;
   private bookshelfProvider?: BookshelfProvider;
   private preloadManager: PreloadManager;
+  private _isWebviewReady = false;
+  private _pendingChapterContent?: {
+    title: string;
+    content: string;
+    chapterIndex: number;
+    totalChapters: number;
+    hasPrev: boolean;
+    hasNext: boolean;
+  };
 
   public static createOrShow(
     extensionUri: vscode.Uri,
     apiClient: ReaderApiClient,
     bookshelfProvider: BookshelfProvider,
     preloadConfig: PreloadConfig,
-    book?: Book
+    book?: Book,
+    chapterIndex?: number
   ) {
-    // Read display location config
-    const cfg = vscode.workspace.getConfiguration('readermate');
-    const displayLocation = cfg.get<string>('chapterDisplay.location', 'editor');
-    
-    if (displayLocation === 'panel') {
-      // Use WebviewView in panel
+    const cfg = vscode.workspace.getConfiguration("readermate");
+    const displayLocation = cfg.get<string>("chapterDisplay.location", "sidebar");
+
+    if (displayLocation === "sidebar" || displayLocation === "panel") {
       if (ReaderProvider.currentViewProvider) {
         if (book) {
-          ReaderProvider.currentViewProvider.openBook(book);
+          ReaderProvider.currentViewProvider.openBook(book, chapterIndex);
         }
-        // Show the panel view
-        vscode.commands.executeCommand('readermateReaderPanel.focus');
+        vscode.commands.executeCommand("readermateReaderPanel.focus");
         return;
       }
-      
-      // WebviewView will be created/managed by the view provider registration
-      // Just focus the panel if it exists
-      vscode.commands.executeCommand('readermateReaderPanel.focus');
+      vscode.commands.executeCommand("readermateReaderPanel.focus");
       return;
     }
-    
-    // Use WebviewPanel in editor (existing logic)
+
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn || vscode.ViewColumn.One
       : vscode.ViewColumn.One;
@@ -60,15 +73,18 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     if (ReaderProvider.currentPanel) {
       ReaderProvider.currentPanel._panel.reveal(column);
       if (book) {
-        ReaderProvider.currentPanel.openBook(book);
+        ReaderProvider.currentPanel.openBook(book, chapterIndex);
       }
       return;
     }
 
-    // Read stealth config for initial title
-    const stealthEnabled = cfg.get<boolean>('stealth.enabled', true);
-    const disguiseTitle = cfg.get<string>('stealth.disguiseTitle', 'Output');
-    const initialTitle = stealthEnabled ? (disguiseTitle || 'Output') : '小说阅读器';
+    const stealthEnabled = cfg.get<boolean>("stealth.enabled", true);
+    const disguiseTitle = cfg.get<string>("stealth.disguiseTitle", "输出");
+    const initialTitle = stealthEnabled
+      ? disguiseTitle || "输出"
+      : book
+      ? `阅读: ${book.name}`
+      : "小说阅读器";
 
     const panel = vscode.window.createWebviewPanel(
       ReaderProvider.viewType,
@@ -93,8 +109,24 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     );
 
     if (book) {
-      ReaderProvider.currentPanel.openBook(book);
+      ReaderProvider.currentPanel.openBook(book, chapterIndex);
     }
+  }
+
+  public static revive(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    apiClient: ReaderApiClient,
+    bookshelfProvider?: BookshelfProvider,
+    preloadConfig?: PreloadConfig
+  ) {
+    ReaderProvider.currentPanel = new ReaderProvider(
+      panel,
+      extensionUri,
+      apiClient,
+      bookshelfProvider,
+      preloadConfig
+    );
   }
 
   constructor(
@@ -109,7 +141,6 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     this.apiClient = apiClient;
     this.bookshelfProvider = bookshelfProvider;
 
-    // 初始化预加载管理器
     const defaultConfig: PreloadConfig = {
       enabled: true,
       chapterCount: 2,
@@ -131,88 +162,81 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     );
   }
 
-  /**
-   * 更新预加载配置
-   */
   public updatePreloadConfig(config: PreloadConfig): void {
     this.preloadManager.updateConfig(config);
     logger.info("预加载配置已更新", "ReaderProvider");
   }
 
-  /**
-   * 更新API客户端
-   */
   public updateApiClient(apiClient: ReaderApiClient): void {
     logger.info("开始更新API客户端", "ReaderProvider");
     this.apiClient = apiClient;
-
-    // 更新预加载管理器的API客户端
     this.preloadManager.updateApiClient(apiClient);
-
     logger.info("API客户端已更新", "ReaderProvider");
   }
 
-  /**
-   * 更新书架提供者
-   */
   public updateBookshelfProvider(bookshelfProvider: BookshelfProvider): void {
     logger.info("更新书架提供者", "ReaderProvider");
     this.bookshelfProvider = bookshelfProvider;
   }
 
-  /**
-   * 切换显示位置
-   */
+  public applySettings(): void {
+    try {
+      const cfg = vscode.workspace.getConfiguration("readermate");
+      const stealthEnabled = cfg.get<boolean>("stealth.enabled", true);
+      const hideToolbar = cfg.get<boolean>("stealth.hideToolbar", true);
+      const fontSize = cfg.get<number>("reader.fontSize", 16);
+      const lineHeight = cfg.get<number>("reader.lineHeight", 1.7);
+      const disguiseTitle = cfg.get<string>("stealth.disguiseTitle", "输出");
+
+      if (this.currentBook) {
+        this._panel.title = stealthEnabled
+          ? disguiseTitle || "输出"
+          : `阅读: ${this.currentBook.name}`;
+      }
+
+      this._panel.webview.postMessage({
+        command: "applyStealth",
+        data: { stealthEnabled, hideToolbar, fontSize, lineHeight },
+      });
+      logger.debug("已应用最新阅读与隐身设置", "ReaderProvider");
+    } catch (e) {
+      logger.error(e, "应用设置失败", "ReaderProvider");
+    }
+  }
+
   public static switchDisplayLocation(
     extensionUri: vscode.Uri,
     apiClient: ReaderApiClient,
     bookshelfProvider: BookshelfProvider,
     preloadConfig: PreloadConfig
   ): void {
-    // 保存当前状态
     let currentBook: Book | undefined;
     let currentChapterIndex = 0;
 
-    // 从当前活动的提供者获取状态
     if (ReaderProvider.currentPanel) {
       currentBook = ReaderProvider.currentPanel.currentBook;
       currentChapterIndex = ReaderProvider.currentPanel.currentChapterIndex;
       ReaderProvider.currentPanel.dispose();
     } else if (ReaderProvider.currentViewProvider) {
       currentBook = ReaderProvider.currentViewProvider.currentBook;
-      currentChapterIndex = ReaderProvider.currentViewProvider.currentChapterIndex;
-      // ViewProvider 不需要手动dispose，因为它由VS Code管理
+      currentChapterIndex =
+        ReaderProvider.currentViewProvider.currentChapterIndex;
     }
 
-    // 如果没有活动的阅读器，直接返回
     if (!currentBook) {
       return;
     }
 
-    // 重新创建面板/视图
     ReaderProvider.createOrShow(
       extensionUri,
       apiClient,
       bookshelfProvider,
       preloadConfig,
-      currentBook
+      currentBook,
+      currentChapterIndex
     );
-
-    // 恢复章节位置 - 延迟执行以确保新的提供者已完全初始化
-    setTimeout(() => {
-      if (ReaderProvider.currentPanel && currentBook) {
-        ReaderProvider.currentPanel.currentChapterIndex = currentChapterIndex;
-        ReaderProvider.currentPanel.loadCurrentChapter();
-      } else if (ReaderProvider.currentViewProvider && currentBook) {
-        ReaderProvider.currentViewProvider.currentChapterIndex = currentChapterIndex;
-        ReaderProvider.currentViewProvider.loadCurrentChapter();
-      }
-    }, 100);
   }
 
-  /**
-   * 处理阅读进度更新
-   */
   private handleReadingProgress(progress: number): void {
     if (!this.currentBook || this.chapters.length === 0) {
       return;
@@ -231,50 +255,54 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     );
   }
 
-  public async deserializeWebviewPanel(
-    webviewPanel: vscode.WebviewPanel,
-    _state: any
-  ): Promise<void> {
-    ReaderProvider.currentPanel = new ReaderProvider(
-      webviewPanel,
-      this._extensionUri,
-      this.apiClient
-    );
-  }
-
-  public async openBook(book: Book) {
+  public async openBook(book: Book, chapterIndex?: number) {
     this.currentBook = book;
-    const cfg = vscode.workspace.getConfiguration('readermate');
-    const stealthEnabled = cfg.get<boolean>('stealth.enabled', true);
-    const disguiseTitle = cfg.get<string>('stealth.disguiseTitle', 'Output');
-    this._panel.title = stealthEnabled ? (disguiseTitle || 'Output') : `阅读: ${book.name}`;
+    const cfg = vscode.workspace.getConfiguration("readermate");
+    const stealthEnabled = cfg.get<boolean>("stealth.enabled", true);
+    const disguiseTitle = cfg.get<string>("stealth.disguiseTitle", "输出");
+    this._panel.title = stealthEnabled
+      ? disguiseTitle || "输出"
+      : `阅读: ${book.name}`;
 
     try {
-      logger.info(`开始获取章节列表: ${book.name}, bookUrl: ${book.bookUrl}`,
-        "ReaderProvider");
-      this.chapters = await this.apiClient.getChapterList(book.bookUrl);
-      logger.info(`章节列表获取成功，共 ${this.chapters.length} 章`, "ReaderProvider");
+      this._panel.webview.postMessage({
+        command: "loading",
+        data: { title: book.name },
+      });
 
-      // 使用书籍的阅读进度作为起始章节，如果没有则从第0章开始
-      this.currentChapterIndex = book.durChapterIndex || 0;
       logger.info(
-        `设置起始章节索引: ${this.currentChapterIndex} (来自书籍进度: ${book.durChapterIndex})`,
+        `开始获取章节列表: ${book.name}, bookUrl: ${book.bookUrl}`,
+        "ReaderProvider"
+      );
+      this.chapters = await this.apiClient.getChapterList(book.bookUrl);
+      logger.info(
+        `章节列表获取成功，共 ${this.chapters.length} 章`,
         "ReaderProvider"
       );
 
-      // 确保章节索引不超出范围
+      if (
+        chapterIndex !== undefined &&
+        chapterIndex >= 0 &&
+        chapterIndex < this.chapters.length
+      ) {
+        this.currentChapterIndex = chapterIndex;
+      } else {
+        this.currentChapterIndex = book.durChapterIndex || 0;
+      }
+
       if (this.currentChapterIndex >= this.chapters.length) {
-        logger.warn("章节索引超出范围，重置为0", "ReaderProvider");
         this.currentChapterIndex = 0;
       }
 
       await this.loadCurrentChapter();
-
-      // 设置预加载管理器的当前书籍信息
       this.preloadManager.setCurrentBook(book.bookUrl, this.chapters.length);
     } catch (error) {
       logger.error(error, "加载章节失败", "ReaderProvider");
       showFriendlyError("chapterList", error, "ReaderProvider");
+      this._panel.webview.postMessage({
+        command: "error",
+        data: { message: "加载章节列表失败，请检查网络或服务配置" },
+      });
     }
   }
 
@@ -294,6 +322,31 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     }
   }
 
+  public async selectChapter() {
+    if (!this.currentBook || this.chapters.length === 0) {
+      vscode.window.showInformationMessage("请先打开一本书籍");
+      return;
+    }
+
+    const items = this.chapters.map((ch) => ({
+      label: ch.title,
+      description:
+        ch.index === this.currentChapterIndex ? "当前章节" : undefined,
+      index: ch.index,
+    }));
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: `选择《${this.currentBook.name}》的章节（共 ${this.chapters.length} 章）`,
+      matchOnDescription: true,
+    });
+
+    if (picked) {
+      this.currentChapterIndex = picked.index;
+      await this.loadCurrentChapter();
+      await this.saveCurrentProgress();
+    }
+  }
+
   private async saveCurrentProgress() {
     if (!this.currentBook || !this.chapters[this.currentChapterIndex]) {
       return;
@@ -304,93 +357,64 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
         this.currentBook.bookUrl,
         this.currentChapterIndex
       );
-      logger.debug(
-        `已保存阅读进度: 第${this.currentChapterIndex + 1}章 ${
-          this.chapters[this.currentChapterIndex]?.title || "未知章节"
-        }`,
-        "ReaderProvider"
-      );
-
-      // 保存进度成功后刷新书架，以更新书籍的阅读进度
       if (this.bookshelfProvider) {
-        logger.info("刷新书架以更新阅读进度", "ReaderProvider");
         this.bookshelfProvider.refresh();
       }
     } catch (error) {
       logger.warn(`保存阅读进度失败: ${String(error)}`, "ReaderProvider");
-      // 不显示错误消息给用户，避免打断阅读体验
     }
   }
 
   public async loadCurrentChapter() {
     if (!this.chapters[this.currentChapterIndex] || !this.currentBook) {
-      logger.warn(
-        `无法加载章节: chapters.length=${this.chapters?.length}, currentChapterIndex=${this.currentChapterIndex}, currentBook=${!!this.currentBook}`,
-        "ReaderProvider"
-      );
       return;
     }
 
-    try {
-      const chapter = this.chapters[this.currentChapterIndex];
-      logger.info(
-        `准备加载章节: ${chapter.title}, 索引: ${this.currentChapterIndex}`,
-        "ReaderProvider"
-      );
+    const chapter = this.chapters[this.currentChapterIndex];
+    this._panel.webview.postMessage({
+      command: "loading",
+      data: { title: chapter.title },
+    });
 
-      // 优先从预加载缓存获取章节内容
+    try {
       const content = await this.preloadManager.getChapterContent(
         this.currentBook.bookUrl,
         this.currentChapterIndex
       );
 
-      logger.debug(`getBookContent返回的数据类型: ${typeof content}`, "ReaderProvider");
-      logger.debug(
-        `getBookContent返回的数据: ${JSON.stringify(content, null, 2)}`,
-        "ReaderProvider"
-      );
-
-      // 使用章节列表中的标题覆盖API返回的标题
-      // 确保content是对象且不是字符串，并且具有title属性
       if (
         chapter.title &&
         content &&
         typeof content === "object" &&
-        !Array.isArray(content) &&
-        typeof content !== "string"
+        !Array.isArray(content)
       ) {
-        logger.debug(`正在设置章节标题: ${chapter.title}`, "ReaderProvider");
         content.title = chapter.title;
-      } else {
-        logger.debug(
-          `无法设置章节标题，content类型: ${typeof content}, chapter.title: ${chapter.title}`,
-          "ReaderProvider"
-        );
       }
 
-      logger.info(`章节内容加载成功: ${content.title}`, "ReaderProvider");
-      logger.debug(`章节内容长度: ${content.content?.length || 0} 字符`, "ReaderProvider");
-
-      const messageData = {
-        command: "updateChapter",
-        data: {
-          title: content.title,
-          content: content.content,
-          chapterIndex: this.currentChapterIndex,
-          totalChapters: this.chapters.length,
-          hasPrev: this.currentChapterIndex > 0,
-          hasNext: this.currentChapterIndex < this.chapters.length - 1,
-        },
+      const messagePayload = {
+        title: content.title,
+        content: content.content,
+        chapterIndex: this.currentChapterIndex,
+        totalChapters: this.chapters.length,
+        hasPrev: this.currentChapterIndex > 0,
+        hasNext: this.currentChapterIndex < this.chapters.length - 1,
       };
 
-      logger.debug(
-        `准备发送WebView消息: ${JSON.stringify(messageData, null, 2)}`,
-        "ReaderProvider"
-      );
-      this._panel.webview.postMessage(messageData);
+      this._pendingChapterContent = messagePayload;
+
+      if (this._isWebviewReady) {
+        this._panel.webview.postMessage({
+          command: "updateChapter",
+          data: messagePayload,
+        });
+      }
     } catch (error) {
       logger.error(error, "加载章节内容失败", "ReaderProvider");
       showFriendlyError("content", error, "ReaderProvider");
+      this._panel.webview.postMessage({
+        command: "error",
+        data: { message: "章节内容加载失败，请点击重试" },
+      });
     }
   }
 
@@ -407,25 +431,28 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
           case "nextChapter":
             this.nextChapter();
             break;
+          case "selectChapter":
+            this.selectChapter();
+            break;
+          case "retry":
+            this.loadCurrentChapter();
+            break;
           case "readingProgress":
             this.handleReadingProgress(message.progress);
             break;
           case "ready":
-            logger.debug("WebView已准备就绪", "ReaderProvider");
-            // Apply stealth on ready
-            try {
-              const cfg = vscode.workspace.getConfiguration('readermate');
-              const stealthEnabled = cfg.get<boolean>('stealth.enabled', true);
-              const hideToolbar = cfg.get<boolean>('stealth.hideToolbar', true);
-              const fontSize = cfg.get<number>('reader.fontSize', 16);
+            this._isWebviewReady = true;
+            this.applySettings();
+            if (this._pendingChapterContent) {
               this._panel.webview.postMessage({
-                command: 'applyStealth',
-                data: { stealthEnabled, hideToolbar, fontSize },
+                command: "updateChapter",
+                data: this._pendingChapterContent,
               });
-            } catch {}
+            } else if (this.currentBook && this.chapters.length > 0) {
+              this.loadCurrentChapter();
+            }
             break;
           case "panic":
-            // Quick-close/boss key
             try {
               this._panel.dispose();
             } catch {}
@@ -437,49 +464,63 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
     );
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview) {
+  private _getHtmlForWebview(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "media", "reader.js")
     );
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, "media", "reader.css")
     );
-    // Read font size for initial CSS var in case script is delayed
-    const cfg = vscode.workspace.getConfiguration('readermate');
-    const fontSize = cfg.get<number>('reader.fontSize', 16);
-
+    const cfg = vscode.workspace.getConfiguration("readermate");
+    const fontSize = cfg.get<number>("reader.fontSize", 16);
+    const lineHeight = cfg.get<number>("reader.lineHeight", 1.7);
+    const nonce = getNonce();
     return `<!DOCTYPE html>
       <html lang="zh-CN">
       <head>
         <meta charset="UTF-8">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link href="${styleUri}" rel="stylesheet">
-        <style> :root { --reader-font-size: ${fontSize}px; } </style>
+        <style>
+          :root {
+            --reader-font-size: ${fontSize}px;
+            --reader-line-height: ${lineHeight};
+          }
+        </style>
         <title>ReaderMate</title>
       </head>
       <body>
         <div class="reader-container">
           <div class="toolbar">
             <button id="prev-btn" class="nav-btn" disabled>上一章</button>
-            <span id="chapter-info"></span>
+            <button id="catalog-btn" class="nav-btn catalog-btn" title="查看目录 (Ctrl+Shift+C)">目录</button>
+            <span id="chapter-info">未加载</span>
             <button id="next-btn" class="nav-btn" disabled>下一章</button>
           </div>
           <div class="content-area">
-            <div id="chapter-title"></div>
-            <div id="chapter-content" class="content"></div>
+            <div id="loading-box" class="loading-state" style="display: none;">
+              <div class="spinner"></div>
+              <p id="loading-text">正在加载章节内容...</p>
+            </div>
+            <div id="error-box" class="error-state" style="display: none;">
+              <p id="error-text">加载失败</p>
+              <button id="retry-btn" class="nav-btn">重试</button>
+            </div>
+            <div id="chapter-body">
+              <div id="chapter-title"></div>
+              <div id="chapter-content" class="content"></div>
+            </div>
           </div>
         </div>
-        <script src="${scriptUri}"></script>
+        <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>`;
   }
 
   public dispose() {
     ReaderProvider.currentPanel = undefined;
-
-    // 清理预加载管理器资源
     this.preloadManager.dispose();
-
     this._panel.dispose();
 
     while (this._disposables.length) {
@@ -493,6 +534,28 @@ export class ReaderProvider implements vscode.WebviewPanelSerializer {
       "setContext",
       "readermate.readerActive",
       false
+    );
+  }
+}
+
+export class ReaderPanelSerializer implements vscode.WebviewPanelSerializer {
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly getApiClient: () => ReaderApiClient,
+    private readonly getBookshelfProvider: () => BookshelfProvider,
+    private readonly getPreloadConfig: () => PreloadConfig
+  ) {}
+
+  async deserializeWebviewPanel(
+    webviewPanel: vscode.WebviewPanel,
+    _state: unknown
+  ): Promise<void> {
+    ReaderProvider.revive(
+      webviewPanel,
+      this.extensionUri,
+      this.getApiClient(),
+      this.getBookshelfProvider(),
+      this.getPreloadConfig()
     );
   }
 }
