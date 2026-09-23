@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -136,14 +136,14 @@
         "when": "readermate.readerActive"
       },
       {
-        "command": "readermate.commentReader.holdTrigger",
+        "command": "readermate.commentReader.toggle",
         "key": "alt+r",
         "when": "editorTextFocus && !findWidgetVisible"
       },
       {
-        "command": "readermate.commentReader.toggle",
+        "command": "readermate.commentReader.holdTrigger",
         "key": "alt+shift+r",
-        "when": "editorTextFocus"
+        "when": "editorTextFocus && !findWidgetVisible"
       },
       {
         "command": "readermate.commentReader.next",

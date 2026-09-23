@@ -243,24 +243,27 @@ export class CommentReaderController implements vscode.Disposable {
   }
 
   /**
-   * 长按按键触发（心跳模式）：按住时通过连击持续续期，松手后 350ms 自动还原
+   * 长按按键触发（心跳模式）：按住时通过连击持续续期，松手后 400ms 自动还原
    */
   public handleHoldTrigger(): void {
     if (!this.isVisible) {
-      this.show();
+      this.show().then(() => {
+        this.resetHoldTimer();
+      });
+    } else {
+      this.resetHoldTimer();
     }
+  }
 
+  private resetHoldTimer(): void {
     if (this.hideTimer) {
       clearTimeout(this.hideTimer);
     }
-
-    // 只要按键还按着，操作系统会不断触发命令重置计时器；松开按键后 350ms 自动消失
     this.hideTimer = setTimeout(() => {
       this.hide();
       this.hideTimer = null;
-    }, 350);
+    }, 400);
   }
-
   /**
    * 切换触发（开关模式）：按一次打开，再按一次关闭
    */
@@ -278,6 +281,9 @@ export class CommentReaderController implements vscode.Disposable {
   public async show(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
+      vscode.window.showInformationMessage(
+        "ReaderMate: 请先在编辑器中打开一个代码文件以开始注释阅读"
+      );
       return;
     }
 
@@ -293,12 +299,35 @@ export class CommentReaderController implements vscode.Disposable {
       this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
     }
 
-    // 如果还没有加载内容，尝试加载当前书籍
+    // 如果还没有加载内容，先显示即时加载反馈，再异步拉取
     if (this.sentences.length === 0) {
+      const line = editor.selection.active.line;
+      const lineObj = editor.document.lineAt(line);
+      const loadingComment = formatComment(
+        editor.document.languageId,
+        "正在加载章节内容..."
+      );
+      editor.setDecorations(this.decorationType, [
+        {
+          range: new vscode.Range(
+            line,
+            lineObj.text.length,
+            line,
+            lineObj.text.length
+          ),
+          renderOptions: {
+            after: {
+              contentText: loadingComment,
+            },
+          },
+        },
+      ]);
       await this.ensureContentLoaded();
     }
 
-    this.render();
+    if (this.isVisible) {
+      this.render();
+    }
   }
 
   /**
@@ -502,14 +531,42 @@ export class CommentReaderController implements vscode.Disposable {
   /**
    * 设定当前正在阅读的图书和章节
    */
-  public async setBook(book: Book, chapterIndex = 0): Promise<void> {
+  public async setBook(bookInput: unknown, chapterIndex = 0): Promise<void> {
+    if (!bookInput || typeof bookInput !== "object") {
+      return;
+    }
+
+    let book: Book | null = null;
+    if ("book" in bookInput) {
+      const candidate = (bookInput as Record<string, unknown>).book;
+      if (candidate && typeof candidate === "object" && "bookUrl" in candidate) {
+        const candidateUrl = (candidate as Record<string, unknown>).bookUrl;
+        if (typeof candidateUrl === "string") {
+          book = candidate as Book;
+        }
+      }
+    } else if ("bookUrl" in bookInput) {
+      const candidateUrl = (bookInput as Record<string, unknown>).bookUrl;
+      if (typeof candidateUrl === "string") {
+        book = bookInput as Book;
+      }
+    }
+
+    if (!book) {
+      logger.error(
+        new Error("无效的书籍对象，缺少合法 book 结构"),
+        "CommentReader:setBook"
+      );
+      return;
+    }
+
     this.currentBook = book;
-    this.currentChapterIndex = chapterIndex;
+    this.currentChapterIndex = chapterIndex ?? book.durChapterIndex ?? 0;
     this.sentenceIndex = 0;
 
     try {
       this.chapters = await this.apiClient.getChapterList(book.bookUrl);
-      await this.loadChapter(chapterIndex, 0);
+      await this.loadChapter(this.currentChapterIndex, 0);
     } catch (err) {
       logger.error(err as Error, "CommentReader:setBook");
     }
@@ -639,7 +696,17 @@ export class CommentReaderController implements vscode.Disposable {
    */
   private async ensureContentLoaded(): Promise<void> {
     if (!this.currentBook) {
-      const books = this.bookshelfProvider.getBooks();
+      let books = this.bookshelfProvider.getBooks();
+      if (books.length === 0) {
+        try {
+          books = await this.apiClient.getBookshelf();
+        } catch (e) {
+          logger.warn(
+            `异步获取书架失败: ${e}`,
+            "CommentReader:ensureContentLoaded"
+          );
+        }
+      }
       if (books.length > 0) {
         this.currentBook = books[0];
         this.currentChapterIndex = books[0].durChapterIndex || 0;
@@ -647,10 +714,16 @@ export class CommentReaderController implements vscode.Disposable {
     }
 
     if (this.currentBook && this.sentences.length === 0) {
-      this.chapters = await this.apiClient.getChapterList(
-        this.currentBook.bookUrl
-      );
-      await this.loadChapter(this.currentChapterIndex, this.sentenceIndex);
+      try {
+        if (this.chapters.length === 0) {
+          this.chapters = await this.apiClient.getChapterList(
+            this.currentBook.bookUrl
+          );
+        }
+        await this.loadChapter(this.currentChapterIndex, this.sentenceIndex);
+      } catch (err) {
+        logger.error(err as Error, "CommentReader:ensureContentLoaded");
+      }
     }
   }
 

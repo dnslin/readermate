@@ -21,6 +21,53 @@ let commentReaderController: CommentReaderController;
 let preloadManager: PreloadManager;
 let outputChannel: vscode.OutputChannel;
 
+function extractBookAndChapter(target?: unknown): {
+  book?: Book;
+  chapterIndex?: number;
+} {
+  if (!target || typeof target !== "object") {
+    return {};
+  }
+
+  if ("book" in target) {
+    const candidateBook = (target as Record<string, unknown>).book;
+    if (
+      candidateBook &&
+      typeof candidateBook === "object" &&
+      "bookUrl" in candidateBook &&
+      typeof (candidateBook as Record<string, unknown>).bookUrl === "string"
+    ) {
+      const book = candidateBook as Book;
+      let chapterIndex = book.durChapterIndex || 0;
+      if ("chapter" in target) {
+        const candidateChapter = (target as Record<string, unknown>).chapter;
+        if (
+          candidateChapter &&
+          typeof candidateChapter === "object" &&
+          "index" in candidateChapter &&
+          typeof (candidateChapter as Record<string, unknown>).index === "number"
+        ) {
+          chapterIndex = (candidateChapter as { index: number }).index;
+        }
+      }
+      return { book, chapterIndex };
+    }
+  }
+
+  if (
+    "bookUrl" in target &&
+    typeof (target as Record<string, unknown>).bookUrl === "string"
+  ) {
+    const book = target as Book;
+    return {
+      book,
+      chapterIndex: book.durChapterIndex || 0,
+    };
+  }
+
+  return {};
+}
+
 function getPreloadConfig(): PreloadConfig {
   const config = vscode.workspace.getConfiguration("readermate");
   return {
@@ -124,20 +171,23 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand(
       "readermate.openReader",
-      async (book?: Book, chapterIndex?: number) => {
+      async (bookOrItem?: unknown, chapterIndex?: number) => {
+        const extracted = extractBookAndChapter(bookOrItem);
+        const book = extracted.book;
+        const index = chapterIndex ?? extracted.chapterIndex ?? 0;
+
         if (book) {
-          commentReaderController.setBook(book, chapterIndex || 0);
+          commentReaderController.setBook(book, index);
           ReaderProvider.createOrShow(
             context.extensionUri,
             apiClient,
             bookshelfProvider,
             getPreloadConfig(),
             book,
-            chapterIndex
+            index
           );
           return;
         }
-
         const books = bookshelfProvider.getBooks();
         if (books.length === 0) {
           vscode.window.showInformationMessage("书架中暂无书籍，请先在 Reader3 添加书籍或刷新书架");
@@ -286,34 +336,51 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand(
       "readermate.commentReader.openBook",
-      async (book?: Book, chapterIndex?: number) => {
-        if (book) {
-          await commentReaderController.setBook(book, chapterIndex || 0);
-          await commentReaderController.show();
-          return;
-        }
+      async (bookOrItem?: unknown, chapterIndex?: number) => {
+        logger.info("在代码注释中打开书籍", "Extension");
+        const extracted = extractBookAndChapter(bookOrItem);
+        let book = extracted.book;
+        let index = chapterIndex ?? extracted.chapterIndex ?? 0;
 
-        const books = bookshelfProvider.getBooks();
-        if (books.length === 0) {
-          vscode.window.showInformationMessage(
-            "书架中暂无书籍，请先在 Reader3 添加书籍或刷新书架"
+        if (!book) {
+          const books = bookshelfProvider.getBooks();
+          if (books.length === 0) {
+            vscode.window.showInformationMessage(
+              "书架中暂无书籍，请先在 Reader3 添加书籍或刷新书架"
+            );
+            return;
+          }
+
+          const picked = await vscode.window.showQuickPick(
+            books.map((b) => ({
+              label: b.name,
+              description: `${b.author} · ${b.lastChapter || ""}`,
+              book: b,
+            })),
+            { placeHolder: "选择要在代码注释中阅读的书籍" }
           );
-          return;
+
+          if (!picked) {
+            return;
+          }
+          book = picked.book;
+          index = book.durChapterIndex || 0;
         }
 
-        const picked = await vscode.window.showQuickPick(
-          books.map((b) => ({
-            label: b.name,
-            description: `${b.author} · ${b.lastChapter || ""}`,
-            book: b,
-          })),
-          { placeHolder: "选择要在代码注释中阅读的书籍" }
+        // 设定书籍并预取首章
+        await commentReaderController.setBook(book, index);
+
+        // 如果光标在侧边栏，将焦点自动切回主代码编辑区
+        await vscode.commands.executeCommand(
+          "workbench.action.focusActiveEditorGroup"
         );
 
-        if (picked) {
-          await commentReaderController.setBook(picked.book);
-          await commentReaderController.show();
-        }
+        // 尝试显示
+        await commentReaderController.show();
+        vscode.window.setStatusBarMessage(
+          `ReaderMate: 《${book.name}》已就绪 (Alt+R 切换，滚轮翻页，Esc 退出)`,
+          5000
+        );
       }
     ),
     vscode.commands.registerCommand("readermate.closePanelIfOpen", () => {
