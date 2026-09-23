@@ -52,7 +52,7 @@ jobs:
 
       - name: Align package.json version
         run: |
-          npm version ${{ steps.ver.outputs.version }} --no-git-tag-version
+          npm version ${{ steps.ver.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build
         run: pnpm run build
