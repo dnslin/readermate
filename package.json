@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -305,37 +305,59 @@
             "description": "隐身模式下隐藏顶部章节翻页工具栏（使用键盘快捷键翻页更低调）",
             "order": 3
           },
+          "readermate.commentReader.mode": {
+            "type": "string",
+            "enum": [
+              "static",
+              "walk"
+            ],
+            "enumDescriptions": [
+              "原地静止阅读（推荐，代码完全静止不跳动，专注眼前一行，眼睛绝不眩晕）",
+              "光标逐行漫游（光标随着滚轮下移逐行前行）"
+            ],
+            "default": "static",
+            "description": "注释阅读运动模式：原地静止阅读（推荐）或光标逐行漫游",
+            "order": 4
+          },
+          "readermate.commentReader.color": {
+            "type": "string",
+            "enum": [
+              "slate",
+              "green",
+              "muted",
+              "dim",
+              "ghost"
+            ],
+            "enumDescriptions": [
+              "经典岩灰/紫灰注释色 (#6272a4，完美契合 Dracula、Tokyo Night 等主流主题)",
+              "经典绿色代码注释 (#6a9955，契合 VS Code 默认深色主题)",
+              "暗灰木色 (#5c6370，契合 One Dark Pro 主题)",
+              "极低对比度隐形暗灰 (#4b5263，旁人几乎无法察觉)",
+              "半透明幽灵色（类似 Copilot 补全提示）"
+            ],
+            "default": "slate",
+            "description": "注释阅读文字伪装颜色预设样式",
+            "order": 5
+          },
+          "readermate.commentReader.customColor": {
+            "type": "string",
+            "default": "",
+            "description": "自定义注释字体颜色（可直接填写任意十六进制 Hex 颜色，如 #6272a4，填写后覆盖预设颜色）",
+            "order": 6
+          },
           "readermate.commentReader.lines": {
             "type": "number",
             "default": 1,
             "minimum": 1,
             "maximum": 3,
             "description": "注释阅读模式下同时显示的行数（推荐 1 行，最不易被察觉）",
-            "order": 4
-          },
-          "readermate.commentReader.color": {
-            "type": "string",
-            "enum": [
-              "comment",
-              "green",
-              "dim",
-              "ghost"
-            ],
-            "enumDescriptions": [
-              "跟随当前主题注释色（推荐，在浅色/深色主题下均清晰显示）",
-              "经典代码注释绿 (#6A9955)",
-              "极淡暗灰色（低对比度，更不易被察觉）",
-              "半透明幽灵色（类似 Copilot 补全提示）"
-            ],
-            "default": "comment",
-            "description": "注释阅读文字伪装颜色样式",
-            "order": 5
+            "order": 7
           },
           "readermate.commentReader.showProgress": {
             "type": "boolean",
             "default": true,
             "description": "是否在首行末尾简短标注当前章节与阅读百分比（如 [第1章 45%]）",
-            "order": 6
+            "order": 8
           }
         }
       },

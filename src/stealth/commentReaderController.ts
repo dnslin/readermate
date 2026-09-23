@@ -96,6 +96,8 @@ export class CommentReaderController implements vscode.Disposable {
   private lastVisibleTopLine: number | null = null;
   private isChangingChapter = false;
   private isProgrammaticScroll = false;
+  private anchorLine: number | null = null;
+  private lastScrollTime = 0;
   private decorationType: vscode.TextEditorDecorationType;
   private disposables: vscode.Disposable[] = [];
 
@@ -139,19 +141,30 @@ export class CommentReaderController implements vscode.Disposable {
    */
   private getDecorationColor(): string | vscode.ThemeColor {
     const config = vscode.workspace.getConfiguration("readermate");
-    const colorStyle = config.get<string>("commentReader.color", "comment");
+    const customColor = config
+      .get<string>("commentReader.customColor", "")
+      .trim();
+    if (customColor) {
+      return customColor;
+    }
 
-    if (colorStyle === "green") {
-      return "#6A9955";
+    const colorStyle = config.get<string>("commentReader.color", "slate");
+
+    switch (colorStyle) {
+      case "green":
+        return "#6A9955";
+      case "muted":
+        return "#5c6370";
+      case "dim":
+        return "#4b5263";
+      case "ghost":
+        return new vscode.ThemeColor("editorGhostText.foreground");
+      case "slate":
+      case "comment":
+      default:
+        // #6272a4: 经典 Dracula / Tokyo Night 紫灰色注释色（与截图完全一致）
+        return "#6272a4";
     }
-    if (colorStyle === "dim") {
-      return new vscode.ThemeColor("editorCodeLens.foreground");
-    }
-    if (colorStyle === "ghost") {
-      return new vscode.ThemeColor("editorGhostText.foreground");
-    }
-    // "comment" 模式使用 descriptionForeground（VS Code 官方标准次级/注释文字色，在任意深浅主题中均正常显示）
-    return new vscode.ThemeColor("descriptionForeground");
   }
 
   /**
@@ -196,10 +209,11 @@ export class CommentReaderController implements vscode.Disposable {
       })
     );
 
-    // 2.1 光标位置改变时：将注释平滑跟随到新行
+    // 2.1 光标位置改变时（如点击其他行）：锚定到新点击行
     this.disposables.push(
       vscode.window.onDidChangeTextEditorSelection((e) => {
         if (this.isVisible && e.textEditor === vscode.window.activeTextEditor) {
+          this.anchorLine = e.textEditor.selection.active.line;
           this.render();
         }
       })
@@ -250,10 +264,11 @@ export class CommentReaderController implements vscode.Disposable {
       }
       return;
     }
-
-    if (event.visibleRanges.length === 0) {
-      return;
+    const now = Date.now();
+    if (now - this.lastScrollTime < 70) {
+      return; // 70ms 节流，避免高 DPI 滚轮或平滑滚轮一次性滑过多个句子
     }
+    this.lastScrollTime = now;
 
     const currentTopLine = event.visibleRanges[0].start.line;
     if (this.lastVisibleTopLine === null) {
@@ -268,10 +283,10 @@ export class CommentReaderController implements vscode.Disposable {
       event.visibleRanges[0].end.line >= event.textEditor.document.lineCount - 1;
 
     if (delta > 0 || (isAtBottom && delta === 0)) {
-      // 向下滚动 -> 读下一句并让光标随之下移
+      // 向下滚动 -> 读下一句
       this.next();
     } else if (delta < 0) {
-      // 向上滚动 -> 读上一句并让光标随之上移
+      // 向上滚动 -> 读上一句
       this.prev();
     }
   }
@@ -338,11 +353,11 @@ export class CommentReaderController implements vscode.Disposable {
       true
     );
 
-    // 记录初始视口行
+    // 记录初始视口行与当前锚定行（默认原地静止阅读）
+    this.anchorLine = editor.selection.active.line;
     if (editor.visibleRanges.length > 0) {
       this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
     }
-
     logger.info(
       `show() 开始执行: file=${editor.document.fileName}, sentences=${this.sentences.length}, currentBook=${this.currentBook?.name}`,
       "CommentReader"
@@ -413,16 +428,43 @@ export class CommentReaderController implements vscode.Disposable {
     if (!editor || !this.isVisible) {
       return;
     }
+    const config = vscode.workspace.getConfiguration("readermate");
+    const readingMode = config.get<string>("commentReader.mode", "static");
 
-    // 始终严格将小说注释挂载在当前光标所在的行
-    const targetEditorLine = editor.selection.active.line;
+    let targetEditorLine =
+      readingMode === "static" && this.anchorLine !== null
+        ? this.anchorLine
+        : editor.selection.active.line;
+
+    // 视口保护：若目标行已完全被滚出当前可见屏幕，自动平滑重定位到视口中央
+    if (editor.visibleRanges.length > 0) {
+      const visibleRange = editor.visibleRanges[0];
+      const isVisibleOnScreen =
+        targetEditorLine >= visibleRange.start.line &&
+        targetEditorLine <= visibleRange.end.line;
+
+      if (!isVisibleOnScreen) {
+        targetEditorLine = Math.floor(
+          (visibleRange.start.line + visibleRange.end.line) / 2
+        );
+        this.anchorLine = targetEditorLine;
+      }
+    }
+
+    targetEditorLine = Math.min(
+      Math.max(0, targetEditorLine),
+      Math.max(0, editor.document.lineCount - 1)
+    );
+
     const textLine = editor.document.lineAt(targetEditorLine);
 
     if (this.sentences.length === 0) {
       // 提示尚未选择书籍
       const comment = formatComment(
         editor.document.languageId,
-        "未选择图书，请在侧边栏右键书籍选择“在代码注释中阅读本书”"
+        "未选择图书，请在侧边栏右键书籍选择“在代码注释中阅读本书”",
+        undefined,
+        textLine.text
       );
       editor.setDecorations(this.decorationType, [
         {
@@ -445,7 +487,6 @@ export class CommentReaderController implements vscode.Disposable {
       return;
     }
 
-    const config = vscode.workspace.getConfiguration("readermate");
     const lineCount = Math.max(
       1,
       config.get<number>("commentReader.lines", 1)
@@ -487,7 +528,8 @@ export class CommentReaderController implements vscode.Disposable {
       const formatted = formatComment(
         editor.document.languageId,
         sentence,
-        tag
+        tag,
+        currentLineObj.text
       );
 
       decorations.push({
@@ -517,7 +559,7 @@ export class CommentReaderController implements vscode.Disposable {
   }
 
   /**
-   * 翻下一句/下一段，并将光标同步移向下一行（末尾自动循环）
+   * 翻下一句/下一段
    */
   public async next(): Promise<void> {
     if (!this.isVisible || this.sentences.length === 0 || this.isChangingChapter) {
@@ -531,6 +573,7 @@ export class CommentReaderController implements vscode.Disposable {
 
     const config = vscode.workspace.getConfiguration("readermate");
     const step = config.get<number>("commentReader.lines", 1);
+    const readingMode = config.get<string>("commentReader.mode", "static");
 
     // 1. 小说句子索引前移
     if (this.sentenceIndex + step < this.sentences.length) {
@@ -542,40 +585,38 @@ export class CommentReaderController implements vscode.Disposable {
       await this.nextChapter();
     }
 
-    // 2. 将编辑器的光标同步下移一行！到达文件末尾自动循环回到第 0 行
-    let currentLine = editor.selection.active.line;
-    let nextLine = currentLine + 1;
+    // 2. 如果开启了 walk（光标逐行漫游）模式，才主动下移光标；在默认的 static（原地静止）模式下，光标和代码绝对静止，零跳动！
+    if (readingMode === "walk") {
+      let currentLine = editor.selection.active.line;
+      let nextLine = currentLine + 1;
 
-    if (nextLine >= editor.document.lineCount) {
-      nextLine = 0;
-      this.isProgrammaticScroll = true;
-      editor.revealRange(
-        new vscode.Range(0, 0, 0, 0),
-        vscode.TextEditorRevealType.AtTop
-      );
-      setTimeout(() => {
-        if (editor.visibleRanges.length > 0) {
-          this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
-        }
-        this.isProgrammaticScroll = false;
-      }, 150);
-    } else {
-      editor.revealRange(
-        new vscode.Range(nextLine, 0, nextLine, 0),
-        vscode.TextEditorRevealType.InCenterIfOutsideViewport
-      );
+      if (nextLine >= editor.document.lineCount) {
+        nextLine = 0;
+        this.isProgrammaticScroll = true;
+        editor.revealRange(
+          new vscode.Range(0, 0, 0, 0),
+          vscode.TextEditorRevealType.AtTop
+        );
+        setTimeout(() => {
+          if (editor.visibleRanges.length > 0) {
+            this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
+          }
+          this.isProgrammaticScroll = false;
+        }, 150);
+      }
+
+      const nextLineObj = editor.document.lineAt(nextLine);
+      const endCol = nextLineObj.text.length;
+      editor.selection = new vscode.Selection(nextLine, endCol, nextLine, endCol);
+      this.anchorLine = nextLine;
     }
 
-    const nextLineObj = editor.document.lineAt(nextLine);
-    const endCol = nextLineObj.text.length;
-    editor.selection = new vscode.Selection(nextLine, endCol, nextLine, endCol);
-
-    // 3. 在新光标所在行渲染小说句子
+    // 3. 在目标行渲染小说句子
     this.render();
   }
 
   /**
-   * 翻上一句/上一段，并将光标同步移向上上一行（顶部自动循环）
+   * 翻上一句/上一段
    */
   public async prev(): Promise<void> {
     if (!this.isVisible || this.sentences.length === 0 || this.isChangingChapter) {
@@ -589,6 +630,7 @@ export class CommentReaderController implements vscode.Disposable {
 
     const config = vscode.workspace.getConfiguration("readermate");
     const step = config.get<number>("commentReader.lines", 1);
+    const readingMode = config.get<string>("commentReader.mode", "static");
 
     // 1. 小说句子索引后退
     if (this.sentenceIndex - step >= 0) {
@@ -599,35 +641,38 @@ export class CommentReaderController implements vscode.Disposable {
       await this.prevChapter();
     }
 
-    // 2. 将编辑器的光标同步上移一行！到达第 0 行自动循环回到最后一行
-    let currentLine = editor.selection.active.line;
-    let prevLine = currentLine - 1;
+    // 2. 如果是 walk 模式才上移光标
+    if (readingMode === "walk") {
+      let currentLine = editor.selection.active.line;
+      let prevLine = currentLine - 1;
 
-    if (prevLine < 0) {
-      prevLine = Math.max(0, editor.document.lineCount - 1);
-      this.isProgrammaticScroll = true;
-      editor.revealRange(
-        new vscode.Range(prevLine, 0, prevLine, 0),
-        vscode.TextEditorRevealType.InCenterIfOutsideViewport
-      );
-      setTimeout(() => {
-        if (editor.visibleRanges.length > 0) {
-          this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
-        }
-        this.isProgrammaticScroll = false;
-      }, 150);
-    } else {
-      editor.revealRange(
-        new vscode.Range(prevLine, 0, prevLine, 0),
-        vscode.TextEditorRevealType.InCenterIfOutsideViewport
-      );
+      if (prevLine < 0) {
+        prevLine = Math.max(0, editor.document.lineCount - 1);
+        this.isProgrammaticScroll = true;
+        editor.revealRange(
+          new vscode.Range(prevLine, 0, prevLine, 0),
+          vscode.TextEditorRevealType.InCenterIfOutsideViewport
+        );
+        setTimeout(() => {
+          if (editor.visibleRanges.length > 0) {
+            this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
+          }
+          this.isProgrammaticScroll = false;
+        }, 150);
+      } else {
+        editor.revealRange(
+          new vscode.Range(prevLine, 0, prevLine, 0),
+          vscode.TextEditorRevealType.InCenterIfOutsideViewport
+        );
+      }
+
+      const prevLineObj = editor.document.lineAt(prevLine);
+      const endCol = prevLineObj.text.length;
+      editor.selection = new vscode.Selection(prevLine, endCol, prevLine, endCol);
+      this.anchorLine = prevLine;
     }
 
-    const prevLineObj = editor.document.lineAt(prevLine);
-    const endCol = prevLineObj.text.length;
-    editor.selection = new vscode.Selection(prevLine, endCol, prevLine, endCol);
-
-    // 3. 在新光标所在行渲染小说句子
+    // 3. 在目标行渲染小说句子
     this.render();
   }
 

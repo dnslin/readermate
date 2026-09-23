@@ -68,13 +68,35 @@ export function getCommentStyle(languageId: string): CommentStyle {
  * @param languageId 当前语言标识符
  * @param text 正文切片文本
  * @param prefixText 可选的前置标签（如进度或章节名）
+ * @param lineText 当前行的实际已有代码文本（用于智能避免重复注释前缀）
+ * @param includeCommentMarker 是否包含语言注释标记（默认 true）
  */
 export function formatComment(
   languageId: string,
   text: string,
-  prefixText?: string
+  prefixText?: string,
+  lineText?: string,
+  includeCommentMarker = true
 ): string {
-  const style = getCommentStyle(languageId);
+  let style = getCommentStyle(languageId);
+
+  if (!includeCommentMarker) {
+    style = { prefix: "", suffix: "" };
+  } else if (lineText) {
+    const trimmed = lineText.trim();
+    // 如果当前行已经处于注释块中（如 /** 或 * 或已带 //、# 等），智能省略重复的前缀标记
+    if (
+      trimmed.startsWith("/*") ||
+      trimmed.startsWith("*") ||
+      trimmed.startsWith("//") ||
+      trimmed.startsWith("#") ||
+      trimmed.startsWith("--") ||
+      trimmed.startsWith("<!--")
+    ) {
+      style = { prefix: "", suffix: "" };
+    }
+  }
+
   const tag = prefixText ? `[${prefixText}] ` : "";
   return `${style.prefix}${tag}${text}${style.suffix}`;
 }
