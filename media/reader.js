@@ -17,17 +17,31 @@
 
   let lastReportedProgress = 0;
   const PROGRESS_REPORT_THRESHOLD = 5;
+  let lastNavTime = 0;
+  function triggerPrev() {
+    const now = Date.now();
+    if (now - lastNavTime < 300) return;
+    lastNavTime = now;
+    if (prevBtn && !prevBtn.disabled) {
+      vscode.postMessage({ command: "prevChapter" });
+    }
+  }
+
+  function triggerNext() {
+    const now = Date.now();
+    if (now - lastNavTime < 300) return;
+    lastNavTime = now;
+    if (nextBtn && !nextBtn.disabled) {
+      vscode.postMessage({ command: "nextChapter" });
+    }
+  }
 
   if (prevBtn) {
-    prevBtn.addEventListener("click", () => {
-      vscode.postMessage({ command: "prevChapter" });
-    });
+    prevBtn.addEventListener("click", triggerPrev);
   }
 
   if (nextBtn) {
-    nextBtn.addEventListener("click", () => {
-      vscode.postMessage({ command: "nextChapter" });
-    });
+    nextBtn.addEventListener("click", triggerNext);
   }
 
   if (catalogBtn) {
@@ -60,36 +74,19 @@
       return;
     }
 
-    // 翻页快捷键：Ctrl+左右方向键
-    if (e.ctrlKey) {
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        if (prevBtn && !prevBtn.disabled) {
-          vscode.postMessage({ command: "prevChapter" });
-        }
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        if (nextBtn && !nextBtn.disabled) {
-          vscode.postMessage({ command: "nextChapter" });
-        }
-      }
-    } else {
+    // 注意：Ctrl+Left / Ctrl+Right 已在 VS Code package.json 注册为全局快捷键，
+    // 此处切勿重复发送 postMessage，否则会导致单次按键跳两章（如48跳50）
       // 单键翻页快捷键：[ 或 ]
       const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
       if (tag !== "input" && tag !== "textarea") {
         if (e.key === "[") {
           e.preventDefault();
-          if (prevBtn && !prevBtn.disabled) {
-            vscode.postMessage({ command: "prevChapter" });
-          }
+          triggerPrev();
         } else if (e.key === "]") {
           e.preventDefault();
-          if (nextBtn && !nextBtn.disabled) {
-            vscode.postMessage({ command: "nextChapter" });
-          }
+          triggerNext();
         }
       }
-    }
   });
 
   window.addEventListener("message", (event) => {

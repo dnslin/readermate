@@ -34,6 +34,8 @@ export class ReaderProvider {
   private bookshelfProvider?: BookshelfProvider;
   private preloadManager: PreloadManager;
   private _isWebviewReady = false;
+  private _isNavigating = false;
+  private _lastNavTime = 0;
   private _pendingChapterContent?: {
     title: string;
     content: string;
@@ -307,18 +309,38 @@ export class ReaderProvider {
   }
 
   public async prevChapter() {
+    const now = Date.now();
+    if (this._isNavigating || now - this._lastNavTime < 300) {
+      return;
+    }
     if (this.currentChapterIndex > 0) {
-      this.currentChapterIndex--;
-      await this.loadCurrentChapter();
-      await this.saveCurrentProgress();
+      this._isNavigating = true;
+      this._lastNavTime = now;
+      try {
+        this.currentChapterIndex--;
+        await this.loadCurrentChapter();
+        await this.saveCurrentProgress();
+      } finally {
+        this._isNavigating = false;
+      }
     }
   }
 
   public async nextChapter() {
+    const now = Date.now();
+    if (this._isNavigating || now - this._lastNavTime < 300) {
+      return;
+    }
     if (this.currentChapterIndex < this.chapters.length - 1) {
-      this.currentChapterIndex++;
-      await this.loadCurrentChapter();
-      await this.saveCurrentProgress();
+      this._isNavigating = true;
+      this._lastNavTime = now;
+      try {
+        this.currentChapterIndex++;
+        await this.loadCurrentChapter();
+        await this.saveCurrentProgress();
+      } finally {
+        this._isNavigating = false;
+      }
     }
   }
 
