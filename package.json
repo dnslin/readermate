@@ -3,7 +3,7 @@
   "displayName": "ReaderMate",
   "icon": "icon.png",
   "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.10",
+  "version": "1.2.11",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -317,11 +317,15 @@
             "type": "string",
             "enum": [
               "comment",
-              "dim"
+              "green",
+              "dim",
+              "ghost"
             ],
             "enumDescriptions": [
-              "跟随当前代码高亮主题的注释颜色（推荐，形同真实注释）",
-              "极淡暗灰色（对比度极低，更难被侧目发觉）"
+              "跟随当前主题注释色（推荐，在浅色/深色主题下均清晰显示）",
+              "经典代码注释绿 (#6A9955)",
+              "极淡暗灰色（低对比度，更不易被察觉）",
+              "半透明幽灵色（类似 Copilot 补全提示）"
             ],
             "default": "comment",
             "description": "注释阅读文字伪装颜色样式",

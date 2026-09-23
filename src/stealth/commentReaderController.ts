@@ -137,23 +137,35 @@ export class CommentReaderController implements vscode.Disposable {
   /**
    * 创建虚拟注释装饰类型
    */
-  private createDecorationType(): vscode.TextEditorDecorationType {
+  private getDecorationColor(): string | vscode.ThemeColor {
     const config = vscode.workspace.getConfiguration("readermate");
     const colorStyle = config.get<string>("commentReader.color", "comment");
 
-    // "comment" 为语法高亮主题注释颜色，"dim" 为极弱灰色
-    const color =
-      colorStyle === "dim"
-        ? new vscode.ThemeColor("editorCodeLens.foreground")
-        : new vscode.ThemeColor("comment.foreground");
+    if (colorStyle === "green") {
+      return "#6A9955";
+    }
+    if (colorStyle === "dim") {
+      return new vscode.ThemeColor("editorCodeLens.foreground");
+    }
+    if (colorStyle === "ghost") {
+      return new vscode.ThemeColor("editorGhostText.foreground");
+    }
+    // "comment" 模式使用 descriptionForeground（VS Code 官方标准次级/注释文字色，在任意深浅主题中均正常显示）
+    return new vscode.ThemeColor("descriptionForeground");
+  }
 
+  /**
+   * 创建虚拟注释装饰类型
+   */
+  private createDecorationType(): vscode.TextEditorDecorationType {
+    const color = this.getDecorationColor();
     return vscode.window.createTextEditorDecorationType({
       isWholeLine: false,
       rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
       after: {
         color,
         fontStyle: "italic",
-        margin: "0 0 0 2.5em",
+        margin: "0 0 0 2em",
       },
     });
   }
@@ -171,15 +183,27 @@ export class CommentReaderController implements vscode.Disposable {
       })
     );
 
-    // 2. 编辑器切换或关闭时：立即清理
+    // 2. 编辑器切换时：若处于阅读态且有新编辑器，无缝在新编辑器中重新渲染；无编辑器才隐藏
     this.disposables.push(
-      vscode.window.onDidChangeActiveTextEditor(() => {
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
         if (this.isVisible) {
-          this.hide();
+          if (editor) {
+            this.render();
+          } else {
+            this.hide();
+          }
         }
       })
     );
 
+    // 2.1 光标位置改变时：将注释平滑跟随到新行
+    this.disposables.push(
+      vscode.window.onDidChangeTextEditorSelection((e) => {
+        if (this.isVisible && e.textEditor === vscode.window.activeTextEditor) {
+          this.render();
+        }
+      })
+    );
     // 3. 窗口失焦时（如切到浏览器或切屏）：立即隐藏
     this.disposables.push(
       vscode.window.onDidChangeWindowState((state) => {
@@ -268,10 +292,20 @@ export class CommentReaderController implements vscode.Disposable {
    * 切换触发（开关模式）：按一次打开，再按一次关闭
    */
   public toggle(): void {
+    logger.info(
+      `toggle() 调用, 当前 isVisible=${this.isVisible}`,
+      "CommentReader"
+    );
     if (this.isVisible) {
       this.hide();
+      vscode.window.setStatusBarMessage("ReaderMate: 代码注释阅读已关闭", 3000);
     } else {
-      this.show();
+      this.show().then(() => {
+        vscode.window.setStatusBarMessage(
+          "ReaderMate: 代码注释阅读已开启 (滚轮翻页，Alt+R 切换，Esc 退出)",
+          4000
+        );
+      });
     }
   }
 
@@ -299,6 +333,11 @@ export class CommentReaderController implements vscode.Disposable {
       this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
     }
 
+    logger.info(
+      `show() 开始执行: file=${editor.document.fileName}, sentences=${this.sentences.length}, currentBook=${this.currentBook?.name}`,
+      "CommentReader"
+    );
+
     // 如果还没有加载内容，先显示即时加载反馈，再异步拉取
     if (this.sentences.length === 0) {
       const line = editor.selection.active.line;
@@ -318,6 +357,9 @@ export class CommentReaderController implements vscode.Disposable {
           renderOptions: {
             after: {
               contentText: loadingComment,
+              color: this.getDecorationColor(),
+              fontStyle: "italic",
+              margin: "0 0 0 2em",
             },
           },
         },
@@ -334,6 +376,7 @@ export class CommentReaderController implements vscode.Disposable {
    * 立即隐藏并清空装饰器
    */
   public hide(): void {
+    logger.info("hide() 隐藏并清理注释", "CommentReader");
     this.isVisible = false;
     if (this.hideTimer) {
       clearTimeout(this.hideTimer);
@@ -361,25 +404,45 @@ export class CommentReaderController implements vscode.Disposable {
       return;
     }
 
+    let targetEditorLine = editor.selection.active.line;
+
+    // 如果当前有可见视口，且光标不在可见视口内（例如用户用鼠标滚轮滚动离开了光标位置）
+    if (editor.visibleRanges.length > 0) {
+      const visibleRange = editor.visibleRanges[0];
+      const isCursorVisible =
+        targetEditorLine >= visibleRange.start.line &&
+        targetEditorLine <= visibleRange.end.line;
+
+      if (!isCursorVisible) {
+        // 动态锚定到当前视口内第 3 行，确保读者在滚轮滚动时始终能在屏幕上看到注释
+        targetEditorLine = Math.min(
+          visibleRange.start.line + 2,
+          Math.max(0, editor.document.lineCount - 1)
+        );
+      }
+    }
+
     if (this.sentences.length === 0) {
       // 提示尚未选择书籍
-      const line = editor.selection.active.line;
-      const lineObj = editor.document.lineAt(line);
+      const lineObj = editor.document.lineAt(targetEditorLine);
       const comment = formatComment(
         editor.document.languageId,
-        "未选择图书，请在侧边栏双击书籍开启阅读"
+        "未选择图书，请在侧边栏右键书籍选择“在代码注释中阅读本书”"
       );
       editor.setDecorations(this.decorationType, [
         {
           range: new vscode.Range(
-            line,
+            targetEditorLine,
             lineObj.text.length,
-            line,
+            targetEditorLine,
             lineObj.text.length
           ),
           renderOptions: {
             after: {
               contentText: comment,
+              color: this.getDecorationColor(),
+              fontStyle: "italic",
+              margin: "0 0 0 2em",
             },
           },
         },
@@ -397,7 +460,6 @@ export class CommentReaderController implements vscode.Disposable {
       true
     );
 
-    const activeLine = editor.selection.active.line;
     const decorations: vscode.DecorationOptions[] = [];
 
     for (let i = 0; i < lineCount; i++) {
@@ -406,12 +468,12 @@ export class CommentReaderController implements vscode.Disposable {
         break;
       }
 
-      const targetEditorLine = activeLine + i;
-      if (targetEditorLine >= editor.document.lineCount) {
+      const lineIndex = targetEditorLine + i;
+      if (lineIndex >= editor.document.lineCount) {
         break;
       }
 
-      const textLine = editor.document.lineAt(targetEditorLine);
+      const textLine = editor.document.lineAt(lineIndex);
       const sentence = this.sentences[targetSentenceIdx];
 
       // 前置标签：只在第一行显示当前章节与阅读百分比
@@ -435,18 +497,26 @@ export class CommentReaderController implements vscode.Disposable {
 
       decorations.push({
         range: new vscode.Range(
-          targetEditorLine,
+          lineIndex,
           textLine.text.length,
-          targetEditorLine,
+          lineIndex,
           textLine.text.length
         ),
         renderOptions: {
           after: {
             contentText: formatted,
+            color: this.getDecorationColor(),
+            fontStyle: "italic",
+            margin: "0 0 0 2em",
           },
         },
       });
     }
+
+    logger.info(
+      `render() 绘制完成: targetLine=${targetEditorLine}, 句子=${this.sentenceIndex + 1}/${this.sentences.length}, 装饰行数=${decorations.length}`,
+      "CommentReader"
+    );
 
     editor.setDecorations(this.decorationType, decorations);
   }
