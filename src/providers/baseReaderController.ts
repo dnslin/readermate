@@ -30,6 +30,8 @@ export abstract class BaseReaderController {
   protected _isWebviewReady = false;
   protected _isNavigating = false;
   protected _lastNavTime = 0;
+  protected _bookOperation = 0;
+  protected _chapterOperation = 0;
   protected _pendingChapterContent?: {
     title: string;
     content: string;
@@ -82,10 +84,32 @@ export abstract class BaseReaderController {
   }
 
   public updateApiClient(apiClient: ReaderApiClient): void {
-    logger.info("开始更新API客户端", this.constructor.name);
+    this.resetReadingState();
     this.apiClient = apiClient;
     this.preloadManager.updateApiClient(apiClient);
-    logger.info("API客户端已更新", this.constructor.name);
+  }
+
+  protected resetReadingState(): void {
+    this._bookOperation++;
+    this._chapterOperation++;
+    this.currentBook = undefined;
+    this.chapters = [];
+    this.currentChapterIndex = 0;
+    this._pendingChapterContent = undefined;
+    this._isNavigating = false;
+    this._lastNavTime = 0;
+    this.preloadManager.clearCurrentBook();
+    const webview = this.getWebview();
+    if (webview) {
+      this._isWebviewReady = false;
+      webview.html = this.getHtmlForWebview(webview);
+    }
+    this.updateTitle();
+  }
+
+  protected isCurrentBook(api: ReaderApiClient, book: Book, operation: number): boolean {
+    return api.isActive && this.apiClient === api && this.currentBook === book &&
+      this._bookOperation === operation && api.ownsBook(book);
   }
 
   public updateBookshelfProvider(bookshelfProvider: BookshelfProvider): void {
@@ -136,193 +160,123 @@ export abstract class BaseReaderController {
   }
 
   public async openBook(book: Book, chapterIndex?: number): Promise<void> {
+    const api = this.apiClient;
+    if (!api.isActive || !api.ownsBook(book)) return;
+    const operation = ++this._bookOperation;
+    this._chapterOperation++;
     this.currentBook = book;
-    const cfg = vscode.workspace.getConfiguration("readermate");
-    const stealthEnabled = cfg.get<boolean>("stealth.enabled", true);
-    const disguiseTitle = cfg.get<string>("stealth.disguiseTitle", "输出");
-    this.updateTitle(stealthEnabled ? disguiseTitle || "输出" : undefined);
-
+    this.chapters = [];
+    this._pendingChapterContent = undefined;
+    this._isNavigating = false;
+    this._lastNavTime = 0;
+    this.preloadManager.clearCurrentBook();
+    this.applySettings();
     const webview = this.getWebview();
+    webview?.postMessage({ command: "loading", data: { title: book.name } });
     try {
-      if (webview) {
-        webview.postMessage({
-          command: "loading",
-          data: { title: book.name },
-        });
+      const chapters = await api.getChapterList(book.bookUrl);
+      if (!this.isCurrentBook(api, book, operation)) return;
+      this.chapters = chapters;
+      const requested = chapterIndex ?? book.durChapterIndex ?? 0;
+      const readable = chapters.find(chapter => !chapter.isVolume && chapter.index >= requested) ||
+        chapters.find(chapter => !chapter.isVolume);
+      if (!readable) {
+        webview?.postMessage({ command: "error", data: { message: "没有可读取的章节" } });
+        return;
       }
-
-      logger.info(
-        `开始获取章节列表: ${book.name}, bookUrl: ${book.bookUrl}`,
-        this.constructor.name
-      );
-      this.chapters = await this.apiClient.getChapterList(book.bookUrl);
-      logger.info(
-        `章节列表获取成功，共 ${this.chapters.length} 章`,
-        this.constructor.name
-      );
-
-      if (
-        chapterIndex !== undefined &&
-        chapterIndex >= 0 &&
-        chapterIndex < this.chapters.length
-      ) {
-        this.currentChapterIndex = chapterIndex;
-      } else {
-        this.currentChapterIndex = book.durChapterIndex || 0;
-      }
-
-      if (this.currentChapterIndex >= this.chapters.length) {
-        this.currentChapterIndex = 0;
-      }
-
+      this.currentChapterIndex = readable.index;
+      this.preloadManager.setCurrentBook(book.bookUrl, chapters);
       await this.loadCurrentChapter();
-      this.preloadManager.setCurrentBook(book.bookUrl, this.chapters.length);
     } catch (error) {
+      if (!this.isCurrentBook(api, book, operation)) return;
       logger.error(error, "加载章节失败", this.constructor.name);
       showFriendlyError("chapterList", error, this.constructor.name);
-      if (webview) {
-        webview.postMessage({
-          command: "error",
-          data: { message: "加载章节列表失败，请检查网络或服务配置" },
-        });
-      }
+      webview?.postMessage({ command: "error", data: { message: "加载章节列表失败，请检查网络或服务配置" } });
     }
   }
 
   public async prevChapter(): Promise<void> {
-    const now = Date.now();
-    if (this._isNavigating || now - this._lastNavTime < 300) {
-      return;
-    }
-    if (this.currentChapterIndex > 0) {
-      this._isNavigating = true;
-      this._lastNavTime = now;
-      try {
-        this.currentChapterIndex--;
-        await this.loadCurrentChapter();
-        await this.saveCurrentProgress();
-      } finally {
-        this._isNavigating = false;
-      }
-    }
+    await this.navigateChapter(-1);
   }
 
   public async nextChapter(): Promise<void> {
+    await this.navigateChapter(1);
+  }
+
+  private async navigateChapter(direction: -1 | 1): Promise<void> {
+    const book = this.currentBook;
+    const api = this.apiClient;
+    const operation = this._bookOperation;
     const now = Date.now();
-    if (this._isNavigating || now - this._lastNavTime < 300) {
-      return;
-    }
-    if (this.currentChapterIndex < this.chapters.length - 1) {
-      this._isNavigating = true;
-      this._lastNavTime = now;
-      try {
-        this.currentChapterIndex++;
-        await this.loadCurrentChapter();
-        await this.saveCurrentProgress();
-      } finally {
-        this._isNavigating = false;
-      }
+    if (!book || !this.isCurrentBook(api, book, operation) || this._isNavigating || now - this._lastNavTime < 300) return;
+    const position = this.chapters.findIndex(chapter => chapter.index === this.currentChapterIndex);
+    const candidates = direction === 1 ? this.chapters.slice(position + 1) : this.chapters.slice(0, position).reverse();
+    const target = candidates.find(chapter => !chapter.isVolume);
+    if (!target) return;
+    this._isNavigating = true;
+    this._lastNavTime = now;
+    try {
+      this.currentChapterIndex = target.index;
+      await this.loadCurrentChapter();
+    } finally {
+      if (this.isCurrentBook(api, book, operation)) this._isNavigating = false;
     }
   }
 
   public async selectChapter(): Promise<void> {
-    if (!this.currentBook || this.chapters.length === 0) {
+    const book = this.currentBook;
+    const api = this.apiClient;
+    const operation = this._bookOperation;
+    if (!book || !this.isCurrentBook(api, book, operation) || this.chapters.length === 0) {
       vscode.window.showInformationMessage("请先打开一本书籍");
       return;
     }
-
-    const items = this.chapters.map((ch) => ({
-      label: ch.title,
-      description:
-        ch.index === this.currentChapterIndex ? "当前章节" : undefined,
-      index: ch.index,
+    const items = this.chapters.filter(chapter => !chapter.isVolume).map(chapter => ({
+      label: chapter.title,
+      description: chapter.index === this.currentChapterIndex ? "当前章节" : undefined,
+      index: chapter.index,
     }));
-
     const picked = await vscode.window.showQuickPick(items, {
-      placeHolder: `选择《${this.currentBook.name}》的章节（共 ${this.chapters.length} 章）`,
-      matchOnDescription: true,
+      placeHolder: `选择《${book.name}》的章节（共 ${items.length} 章）`, matchOnDescription: true,
     });
-
-    if (picked) {
+    if (picked && this.isCurrentBook(api, book, operation)) {
       this.currentChapterIndex = picked.index;
       await this.loadCurrentChapter();
-      await this.saveCurrentProgress();
-    }
-  }
-
-  protected async saveCurrentProgress(): Promise<void> {
-    if (!this.currentBook || !this.chapters[this.currentChapterIndex]) {
-      return;
-    }
-
-    try {
-      await this.apiClient.saveBookProgress(
-        this.currentBook.bookUrl,
-        this.currentChapterIndex
-      );
-      if (this.bookshelfProvider) {
-        this.bookshelfProvider.refresh();
-      }
-    } catch (error) {
-      logger.warn(`保存阅读进度失败: ${String(error)}`, this.constructor.name);
     }
   }
 
   public async loadCurrentChapter(): Promise<void> {
-    if (!this.chapters[this.currentChapterIndex] || !this.currentBook) {
-      return;
-    }
-
-    const chapter = this.chapters[this.currentChapterIndex];
+    const api = this.apiClient;
+    const book = this.currentBook;
+    const operation = this._bookOperation;
+    const chapter = this.chapters.find(item => item.index === this.currentChapterIndex && !item.isVolume);
+    if (!book || !chapter || !this.isCurrentBook(api, book, operation)) return;
+    const load = ++this._chapterOperation;
     const webview = this.getWebview();
-    if (webview) {
-      webview.postMessage({
-        command: "loading",
-        data: { title: chapter.title },
-      });
-    }
-
+    webview?.postMessage({ command: "loading", data: { title: chapter.title } });
     try {
-      const content = await this.preloadManager.getChapterContent(
-        this.currentBook.bookUrl,
-        this.currentChapterIndex
-      );
-
-      if (
-        chapter.title &&
-        content &&
-        typeof content === "object" &&
-        !Array.isArray(content)
-      ) {
-        content.title = chapter.title;
-      }
-
+      const content = await this.preloadManager.getChapterContent(book.bookUrl, chapter.index);
+      if (!this.isCurrentBook(api, book, operation) || load !== this._chapterOperation) return;
+      const position = this.chapters.indexOf(chapter);
       const messagePayload = {
-        title: content.title,
-        content: content.content,
-        chapterIndex: this.currentChapterIndex,
-        totalChapters: this.chapters.length,
-        hasPrev: this.currentChapterIndex > 0,
-        hasNext: this.currentChapterIndex < this.chapters.length - 1,
+        title: chapter.title || content.title, content: content.content,
+        chapterIndex: chapter.index, totalChapters: this.chapters.length,
+        hasPrev: this.chapters.slice(0, position).some(item => !item.isVolume),
+        hasNext: this.chapters.slice(position + 1).some(item => !item.isVolume),
       };
-
       this._pendingChapterContent = messagePayload;
-
-      if (this._isWebviewReady && webview) {
-        webview.postMessage({
-          command: "updateChapter",
-          data: messagePayload,
-        });
+      if (this._isWebviewReady && webview) webview.postMessage({ command: "updateChapter", data: messagePayload });
+      try {
+        await api.saveBookProgress(book.bookUrl, chapter.index);
+        if (this.isCurrentBook(api, book, operation) && load === this._chapterOperation) this.bookshelfProvider?.refresh();
+      } catch (error) {
+        if (this.isCurrentBook(api, book, operation)) logger.warn(`保存阅读进度失败: ${String(error)}`, this.constructor.name);
       }
     } catch (error) {
+      if (!this.isCurrentBook(api, book, operation) || load !== this._chapterOperation) return;
       logger.error(error, "加载章节内容失败", this.constructor.name);
       showFriendlyError("content", error, this.constructor.name);
-      if (webview) {
-        webview.postMessage({
-          command: "error",
-          data: { message: "章节内容加载失败，请点击重试" },
-        });
-      }
+      webview?.postMessage({ command: "error", data: { message: "章节内容加载失败，请点击重试" } });
     }
   }
 
@@ -373,8 +327,6 @@ export abstract class BaseReaderController {
             data: this._pendingChapterContent,
           };
           webview.postMessage(updateMsg);
-        } else if (this.currentBook && this.chapters.length > 0) {
-          this.loadCurrentChapter();
         }
         break;
       case "panic":
@@ -448,17 +400,23 @@ export abstract class BaseReaderController {
     // 2. 关闭侧边栏
     try {
       vscode.commands.executeCommand("workbench.action.closeSidebar");
-    } catch {}
+    } catch (error) {
+      logger.warn(`关闭侧边栏失败: ${String(error)}`, "BaseReaderController");
+    }
 
     // 3. 关闭底部面板
     try {
       vscode.commands.executeCommand("workbench.action.closePanel");
-    } catch {}
+    } catch (error) {
+      logger.warn(`关闭底部面板失败: ${String(error)}`, "BaseReaderController");
+    }
 
     // 4. 将焦点切回主代码编辑区域
     try {
       vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
-    } catch {}
+    } catch (error) {
+      logger.warn(`恢复编辑器焦点失败: ${String(error)}`, "BaseReaderController");
+    }
 
     vscode.commands.executeCommand(
       "setContext",

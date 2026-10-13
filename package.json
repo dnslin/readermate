@@ -2,8 +2,8 @@
   "name": "readermate",
   "displayName": "ReaderMate",
   "icon": "icon.png",
-  "description": "用于阅读小说的 VS 代码扩展，集成 Reader3 服务器",
-  "version": "1.2.13",
+  "description": "用于阅读小说的 VS Code 扩展，支持 Reader3 和 Legado 阅读 Web 后端",
+  "version": "1.2.14",
   "publisher": "readermate-dnslin",
   "engines": {
     "vscode": "^1.60.0",
@@ -70,7 +70,7 @@
       },
       {
         "command": "readermate.configure",
-        "title": "配置 ReaderMate",
+        "title": "打开插件设置",
         "category": "ReaderMate",
         "icon": "$(gear)"
       },
@@ -221,27 +221,50 @@
         "title": "ReaderMate - 服务器与账号",
         "order": 1,
         "properties": {
+          "readermate.backend": {
+            "type": "string",
+            "enum": ["reader3", "legado"],
+            "enumDescriptions": [
+              "Reader3：使用用户名和 Token",
+              "Legado 阅读 Web：使用 API Key"
+            ],
+            "default": "reader3",
+            "markdownDescription": "**先选择后端，再填写对应配置。** 只启用一套后端，切换立即生效并清空旧阅读状态与缓存。Reader3 和 Legado 的配置分别保留，未选中的配置不生效。",
+            "order": 0
+          },
           "readermate.serverUrl": {
             "type": "string",
             "default": "https://reader.me",
-            "description": "Reader3 服务器的基础 API 地址（例如 https://reader.me 或自建服务器地址）",
+            "description": "Reader3 服务器地址，仅在后端选择 Reader3 时使用",
             "order": 1
           },
           "readermate.username": {
             "type": "string",
-            "description": "Reader3 账户用户名",
+            "description": "Reader3 账户用户名，仅在后端选择 Reader3 时使用",
             "order": 2
           },
           "readermate.token": {
             "type": "string",
-            "description": "Reader3 访问令牌（Access Token）",
+            "description": "Reader3 访问令牌，仅在后端选择 Reader3 时使用",
             "order": 3
           },
           "readermate.appendReader3Path": {
             "type": "boolean",
             "default": true,
-            "description": "是否自动在服务器地址后追加 /reader3 路径（符合 Reader3 官方标准规范）",
+            "description": "仅在后端选择 Reader3 时生效：是否在 Reader3 服务器地址后自动追加 /reader3 路径",
             "order": 4
+          },
+          "readermate.legado.serverUrl": {
+            "type": "string",
+            "default": "https://legado.kuku.me",
+            "description": "Legado 阅读 Web 地址，支持站点地址或完整 /openapi/v1 地址，仅在后端选择 Legado 时使用",
+            "order": 5
+          },
+          "readermate.legado.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "Legado 网页「我的 → API Key」中生成的密钥，仅在后端选择 Legado 时使用。不要提交到版本控制中的工作区设置。",
+            "order": 6
           }
         }
       },
@@ -406,7 +429,8 @@
     "build": "pnpm run compile && pnpm run package",
     "pretest": "pnpm run compile && pnpm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "test": "node --test tests/*.test.cjs",
+    "test:smoke": "pnpm run compile && node tests/run-extension-smoke.cjs"
   },
   "devDependencies": {
     "@types/node": "16.x",

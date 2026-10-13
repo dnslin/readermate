@@ -12,7 +12,7 @@ export class PreloadCache {
   private maxSize: number;
   private stats: PreloadStats;
 
-  constructor(maxSize: number = 10) {
+  constructor(maxSize = 10) {
     this.maxSize = maxSize;
     this.stats = {
       cacheHits: 0,

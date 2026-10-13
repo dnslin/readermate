@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { ReaderApiClient } from "./api/readerApi";
-import { Book } from "./api/types";
+import { Book, ReaderBackendConfig } from "./api/types";
 import { BookshelfProvider } from "./providers/bookshelfProvider";
 import {
   ReaderProvider,
@@ -78,20 +78,32 @@ function getPreloadConfig(): PreloadConfig {
   };
 }
 
-function createApiClient(channel: vscode.OutputChannel): ReaderApiClient {
+function getBackendConfig(): ReaderBackendConfig {
   const config = vscode.workspace.getConfiguration("readermate");
-  const serverUrl = config.get<string>("serverUrl", "https://reader.me");
-  const username = config.get<string>("username");
-  const token = config.get<string>("token");
-  const appendReader3Path = config.get<boolean>("appendReader3Path", true);
+  if (config.get<string>("backend", "reader3") === "legado") {
+    return {
+      backend: "legado",
+      serverUrl: config.get<string>("legado.serverUrl", "https://legado.kuku.me"),
+      apiKey: config.get<string>("legado.apiKey", ""),
+    };
+  }
+  const username = config.get<string>("username", "");
+  const token = config.get<string>("token", "");
+  return {
+    backend: "reader3",
+    serverUrl: config.get<string>("serverUrl", "https://reader.me"),
+    accessToken: username && token ? `${username}:${token}` : undefined,
+    appendReader3Path: config.get<boolean>("appendReader3Path", true),
+  };
+}
 
-  const accessToken = username && token ? `${username}:${token}` : undefined;
-  return new ReaderApiClient(
-    serverUrl,
-    accessToken,
-    channel,
-    appendReader3Path
-  );
+function replaceApiClient(): void {
+  apiClient.dispose();
+  apiClient = new ReaderApiClient(getBackendConfig());
+  ReaderProvider.currentPanel?.updateApiClient(apiClient);
+  readerViewProvider.updateApiClient(apiClient);
+  commentReaderController.updateApiClient(apiClient);
+  bookshelfProvider.updateApiClient(apiClient);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -101,15 +113,16 @@ export function activate(context: vscode.ExtensionContext) {
   logger.init(outputChannel, "info");
   logger.info("ReaderMate 插件已激活", "Extension");
 
-  const config = vscode.workspace.getConfiguration("readermate");
-  const serverUrl = config.get<string>("serverUrl", "");
-  const username = config.get<string>("username");
-  const token = config.get<string>("token");
+  const backendConfig = getBackendConfig();
+  const missingConfig = !backendConfig.serverUrl ||
+    (backendConfig.backend === "legado" ? !backendConfig.apiKey : !backendConfig.accessToken);
 
-  if (!serverUrl || !username || !token) {
+  if (missingConfig) {
     vscode.window
       .showWarningMessage(
-        "ReaderMate：尚未配置完整的 Reader3 服务器信息（地址、用户名或 Token）。",
+        backendConfig.backend === "legado"
+          ? "ReaderMate：请配置 Legado 服务器地址和 API Key。"
+          : "ReaderMate：请配置 Reader3 服务器地址、用户名和 Token。",
         "立即配置"
       )
       .then((selection) => {
@@ -119,7 +132,7 @@ export function activate(context: vscode.ExtensionContext) {
       });
   }
 
-  apiClient = createApiClient(outputChannel);
+  apiClient = new ReaderApiClient(backendConfig);
   bookshelfProvider = new BookshelfProvider(apiClient);
 
   vscode.window.createTreeView("readermateBookshelf", {
@@ -177,6 +190,7 @@ export function activate(context: vscode.ExtensionContext) {
         const index = chapterIndex ?? extracted.chapterIndex ?? 0;
 
         if (book) {
+          if (!apiClient.ownsBook(book)) return;
           commentReaderController.setBook(book, index);
           ReaderProvider.createOrShow(
             context.extensionUri,
@@ -190,7 +204,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
         const books = bookshelfProvider.getBooks();
         if (books.length === 0) {
-          vscode.window.showInformationMessage("书架中暂无书籍，请先在 Reader3 添加书籍或刷新书架");
+          vscode.window.showInformationMessage("书架中暂无书籍，请先在当前后端添加书籍或刷新书架");
           return;
         }
 
@@ -203,7 +217,7 @@ export function activate(context: vscode.ExtensionContext) {
           { placeHolder: "选择要阅读的书籍" }
         );
 
-        if (picked) {
+        if (picked && apiClient.ownsBook(picked.book)) {
           commentReaderController.setBook(picked.book);
           ReaderProvider.createOrShow(
             context.extensionUri,
@@ -245,14 +259,16 @@ export function activate(context: vscode.ExtensionContext) {
         { placeHolder: "选择查看目录的书籍" }
       );
 
-      if (!pickedBook) return;
+      if (!pickedBook || !apiClient.ownsBook(pickedBook.book)) return;
 
       try {
+        const client = apiClient;
         const chapters = await bookshelfProvider.getChapterList(
           pickedBook.book.bookUrl
         );
+        if (client !== apiClient || !client.isActive) return;
         const pickedChapter = await vscode.window.showQuickPick(
-          chapters.map((ch) => ({
+          chapters.filter((ch) => !ch.isVolume).map((ch) => ({
             label: ch.title,
             description:
               ch.index === pickedBook.book.durChapterIndex
@@ -263,7 +279,7 @@ export function activate(context: vscode.ExtensionContext) {
           { placeHolder: `《${pickedBook.book.name}》目录（共 ${chapters.length} 章）` }
         );
 
-        if (pickedChapter) {
+        if (pickedChapter && client === apiClient && client.isActive) {
           ReaderProvider.createOrShow(
             context.extensionUri,
             apiClient,
@@ -274,23 +290,24 @@ export function activate(context: vscode.ExtensionContext) {
           );
         }
       } catch (err) {
+        if (!apiClient.ownsBook(pickedBook.book)) return;
         vscode.window.showErrorMessage("获取目录失败，请检查网络");
       }
     }),
 
     vscode.commands.registerCommand("readermate.prevChapter", () => {
       if (ReaderProvider.currentPanel) {
-        ReaderProvider.currentPanel.prevChapter();
+        return ReaderProvider.currentPanel.prevChapter();
       } else if (readerViewProvider) {
-        readerViewProvider.prevChapter();
+        return readerViewProvider.prevChapter();
       }
     }),
 
     vscode.commands.registerCommand("readermate.nextChapter", () => {
       if (ReaderProvider.currentPanel) {
-        ReaderProvider.currentPanel.nextChapter();
+        return ReaderProvider.currentPanel.nextChapter();
       } else if (readerViewProvider) {
-        readerViewProvider.nextChapter();
+        return readerViewProvider.nextChapter();
       }
     }),
 
@@ -346,7 +363,7 @@ export function activate(context: vscode.ExtensionContext) {
           const books = bookshelfProvider.getBooks();
           if (books.length === 0) {
             vscode.window.showInformationMessage(
-              "书架中暂无书籍，请先在 Reader3 添加书籍或刷新书架"
+              "书架中暂无书籍，请先在当前后端添加书籍或刷新书架"
             );
             return;
           }
@@ -367,8 +384,11 @@ export function activate(context: vscode.ExtensionContext) {
           index = book.durChapterIndex || 0;
         }
 
+        if (!apiClient.ownsBook(book)) return;
+        const client = apiClient;
         // 设定书籍并预取首章
         await commentReaderController.setBook(book, index);
+        if (client !== apiClient || !client.isActive) return;
 
         // 如果光标在侧边栏，将焦点自动切回主代码编辑区
         await vscode.commands.executeCommand(
@@ -390,87 +410,29 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand("readermate.refreshBookshelf", () => {
-      apiClient = createApiClient(outputChannel);
-      bookshelfProvider.updateApiClient(apiClient);
-
-      if (ReaderProvider.currentPanel) {
-        ReaderProvider.currentPanel.updateApiClient(apiClient);
-        ReaderProvider.currentPanel.updateBookshelfProvider(bookshelfProvider);
-      }
-
-      if (readerViewProvider) {
-        readerViewProvider.updateApiClient(apiClient);
-        readerViewProvider.updateBookshelfProvider(bookshelfProvider);
-      }
+      replaceApiClient();
       showInfo("ReaderMate 书架与配置已刷新");
     }),
 
-    vscode.commands.registerCommand("readermate.configure", async () => {
-      const cfg = vscode.workspace.getConfiguration("readermate");
-      const currentUrl = cfg.get<string>("serverUrl", "https://reader.me");
-      const currentUsername = cfg.get<string>("username", "");
-      const currentToken = cfg.get<string>("token", "");
-
-      const serverUrl = await vscode.window.showInputBox({
-        title: "ReaderMate 配置向导 (1/3)",
-        prompt: "请输入 Reader3 服务器地址",
-        value: currentUrl,
-        ignoreFocusOut: true,
-      });
-      if (serverUrl === undefined) return;
-
-      const username = await vscode.window.showInputBox({
-        title: "ReaderMate 配置向导 (2/3)",
-        prompt: "请输入 Reader3 账户用户名",
-        value: currentUsername,
-        ignoreFocusOut: true,
-      });
-      if (username === undefined) return;
-
-      const token = await vscode.window.showInputBox({
-        title: "ReaderMate 配置向导 (3/3)",
-        prompt: "请输入 Reader3 访问令牌 (Token)",
-        value: currentToken,
-        password: true,
-        ignoreFocusOut: true,
-      });
-      if (token === undefined) return;
-
-      await cfg.update(
-        "serverUrl",
-        serverUrl.trim(),
-        vscode.ConfigurationTarget.Global
-      );
-      await cfg.update(
-        "username",
-        username.trim(),
-        vscode.ConfigurationTarget.Global
-      );
-      await cfg.update(
-        "token",
-        token.trim(),
-        vscode.ConfigurationTarget.Global
-      );
-
-      vscode.commands.executeCommand("readermate.refreshBookshelf");
-      vscode.window.showInformationMessage(
-        "ReaderMate 配置已保存，正在重新加载书架..."
-      );
-    }),
+    vscode.commands.registerCommand("readermate.configure", () =>
+      vscode.commands.executeCommand("workbench.action.openSettings", "@ext:readermate-dnslin.readermate")
+    ),
 
     vscode.commands.registerCommand("readermate.showConfig", () => {
-      const cfg = vscode.workspace.getConfiguration("readermate");
-      const currentUrl = cfg.get<string>("serverUrl", "");
-      const currentUsername = cfg.get<string>("username", "");
-      const token = cfg.get<string>("token", "");
-      const appendReader3Path = cfg.get<boolean>("appendReader3Path", true);
+      const active = getBackendConfig();
       const preloadCfg = getPreloadConfig();
 
       logger.info("===== 当前 ReaderMate 生效配置 =====", "Extension");
-      logger.info(`服务器地址: ${currentUrl}`, "Extension");
-      logger.info(`自动追加 /reader3: ${appendReader3Path}`, "Extension");
-      logger.info(`用户名: ${currentUsername || "(未配置)"}`, "Extension");
-      logger.info(`访问令牌: ${token ? "***已配置***" : "(未配置)"}`, "Extension");
+      logger.info(`当前后端: ${active.backend === "legado" ? "Legado 阅读 Web" : "Reader3"}（另一套后端未启用）`, "Extension");
+      logger.info(`服务器地址: ${active.serverUrl}`, "Extension");
+      if (active.backend === "reader3") {
+        const cfg = vscode.workspace.getConfiguration("readermate");
+        logger.info(`自动追加 /reader3: ${active.appendReader3Path}`, "Extension");
+        logger.info(`用户名: ${cfg.get<string>("username", "") || "(未配置)"}`, "Extension");
+        logger.info(`访问令牌: ${active.accessToken ? "***已配置***" : "(未配置)"}`, "Extension");
+      } else {
+        logger.info(`API Key: ${active.apiKey ? "***已配置***" : "(未配置)"}`, "Extension");
+      }
       logger.info(
         `预加载: 启用=${preloadCfg.enabled}, 章节数=${preloadCfg.chapterCount}, 触发进度=${preloadCfg.triggerProgress}%, 最大缓存=${preloadCfg.maxCacheSize}`,
         "Extension"
@@ -486,30 +448,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(
     (e) => {
-      const apiConfigChanged =
-        e.affectsConfiguration("readermate.serverUrl") ||
-        e.affectsConfiguration("readermate.username") ||
-        e.affectsConfiguration("readermate.token") ||
-        e.affectsConfiguration("readermate.appendReader3Path");
+      const activeBackend = getBackendConfig().backend;
+      const apiConfigChanged = e.affectsConfiguration("readermate.backend") ||
+        (activeBackend === "legado"
+          ? e.affectsConfiguration("readermate.legado.serverUrl") || e.affectsConfiguration("readermate.legado.apiKey")
+          : e.affectsConfiguration("readermate.serverUrl") || e.affectsConfiguration("readermate.username") ||
+            e.affectsConfiguration("readermate.token") || e.affectsConfiguration("readermate.appendReader3Path"));
 
       if (apiConfigChanged) {
-        logger.info("检测到 API 相关配置变更，重建客户端", "Extension");
-        apiClient = createApiClient(outputChannel);
-        bookshelfProvider.updateApiClient(apiClient);
-
-        if (ReaderProvider.currentPanel) {
-          ReaderProvider.currentPanel.updateApiClient(apiClient);
-          ReaderProvider.currentPanel.updateBookshelfProvider(bookshelfProvider);
-        }
-
-        if (readerViewProvider) {
-          readerViewProvider.updateApiClient(apiClient);
-          readerViewProvider.updateBookshelfProvider(bookshelfProvider);
-        }
-
-        if (commentReaderController) {
-          commentReaderController.updateApiClient(apiClient);
-        }
+        logger.info("检测到当前后端配置变更，停止旧会话并切换客户端", "Extension");
+        replaceApiClient();
       }
 
       const preloadConfigChanged =
@@ -570,6 +518,9 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+  apiClient?.dispose();
+  preloadManager?.dispose();
+  readerViewProvider?.dispose();
   if (ReaderProvider.currentPanel) {
     ReaderProvider.currentPanel.dispose();
   }

@@ -100,6 +100,9 @@ export class CommentReaderController implements vscode.Disposable {
   private lastScrollTime = 0;
   private decorationType: vscode.TextEditorDecorationType;
   private disposables: vscode.Disposable[] = [];
+  private bookOperation = 0;
+  private chapterOperation = 0;
+  private disposed = false;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -127,8 +130,32 @@ export class CommentReaderController implements vscode.Disposable {
     return CommentReaderController.instance;
   }
   public updateApiClient(apiClient: ReaderApiClient): void {
+    this.resetReadingState();
     this.apiClient = apiClient;
     this.preloadManager.updateApiClient(apiClient);
+  }
+
+  private resetReadingState(): void {
+    this.bookOperation++;
+    this.chapterOperation++;
+    this.hide();
+    this.currentBook = null;
+    this.chapters = [];
+    this.currentChapterIndex = 0;
+    this.chapterContent = null;
+    this.sentences = [];
+    this.sentenceIndex = 0;
+    this.isChangingChapter = false;
+    this.isProgrammaticScroll = false;
+    this.lastVisibleTopLine = null;
+    this.anchorLine = null;
+    this.lastScrollTime = 0;
+    this.preloadManager.clearCurrentBook();
+  }
+
+  private isCurrent(api: ReaderApiClient, operation: number, book = this.currentBook): boolean {
+    return !this.disposed && api.isActive && api === this.apiClient && this.bookOperation === operation &&
+      this.currentBook === book && (!book || api.ownsBook(book));
   }
 
   public updatePreloadConfig(config: PreloadConfig): void {
@@ -295,8 +322,11 @@ export class CommentReaderController implements vscode.Disposable {
    * 长按按键触发（心跳模式）：按住时通过连击持续续期，松手后 400ms 自动还原
    */
   public handleHoldTrigger(): void {
+    const api = this.apiClient;
+    const operation = this.bookOperation;
     if (!this.isVisible) {
       this.show().then(() => {
+        if (!this.isCurrent(api, operation) || !this.isVisible) return;
         this.resetHoldTimer();
       });
     } else {
@@ -326,6 +356,7 @@ export class CommentReaderController implements vscode.Disposable {
       vscode.window.setStatusBarMessage("ReaderMate: 代码注释阅读已关闭", 3000);
     } else {
       this.show().then(() => {
+        if (!this.isVisible || this.disposed || !this.apiClient.isActive) return;
         vscode.window.setStatusBarMessage(
           "ReaderMate: 代码注释阅读已开启 (滚轮翻页，Alt+R 切换，Esc 退出)",
           4000
@@ -338,6 +369,9 @@ export class CommentReaderController implements vscode.Disposable {
    * 激活显示注释
    */
   public async show(): Promise<void> {
+    const api = this.apiClient;
+    const operation = this.bookOperation;
+    if (!this.isCurrent(api, operation)) return;
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showInformationMessage(
@@ -392,7 +426,7 @@ export class CommentReaderController implements vscode.Disposable {
       await this.ensureContentLoaded();
     }
 
-    if (this.isVisible) {
+    if (this.isCurrent(api, operation) && this.isVisible) {
       this.render();
     }
   }
@@ -414,10 +448,9 @@ export class CommentReaderController implements vscode.Disposable {
       false
     );
 
-    const editor = vscode.window.activeTextEditor;
-    if (editor) {
-      editor.setDecorations(this.decorationType, []);
-    }
+    const editors = new Set(vscode.window.visibleTextEditors);
+    if (vscode.window.activeTextEditor) editors.add(vscode.window.activeTextEditor);
+    for (const editor of editors) editor.setDecorations(this.decorationType, []);
   }
 
   /**
@@ -517,7 +550,7 @@ export class CommentReaderController implements vscode.Disposable {
       if (i === 0 && showProgress) {
         const chapterTitle =
           this.chapterContent?.title ||
-          this.chapters[this.currentChapterIndex]?.title ||
+          this.chapters.find(chapter => chapter.index === this.currentChapterIndex)?.title ||
           `第${this.currentChapterIndex + 1}章`;
         const percent = Math.floor(
           ((this.sentenceIndex + 1) / Math.max(1, this.sentences.length)) * 100
@@ -570,6 +603,9 @@ export class CommentReaderController implements vscode.Disposable {
     if (!editor) {
       return;
     }
+    const api = this.apiClient;
+    const operation = this.bookOperation;
+    const book = this.currentBook;
 
     const config = vscode.workspace.getConfiguration("readermate");
     const step = config.get<number>("commentReader.lines", 1);
@@ -583,11 +619,12 @@ export class CommentReaderController implements vscode.Disposable {
     } else {
       // 读到当前章末尾，自动无缝跨入下一章
       await this.nextChapter();
+      if (!this.isCurrent(api, operation, book) || !this.isVisible) return;
     }
 
     // 2. 如果开启了 walk（光标逐行漫游）模式，才主动下移光标；在默认的 static（原地静止）模式下，光标和代码绝对静止，零跳动！
     if (readingMode === "walk") {
-      let currentLine = editor.selection.active.line;
+      const currentLine = editor.selection.active.line;
       let nextLine = currentLine + 1;
 
       if (nextLine >= editor.document.lineCount) {
@@ -598,6 +635,7 @@ export class CommentReaderController implements vscode.Disposable {
           vscode.TextEditorRevealType.AtTop
         );
         setTimeout(() => {
+          if (!this.isCurrent(api, operation, book)) return;
           if (editor.visibleRanges.length > 0) {
             this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
           }
@@ -627,6 +665,9 @@ export class CommentReaderController implements vscode.Disposable {
     if (!editor) {
       return;
     }
+    const api = this.apiClient;
+    const operation = this.bookOperation;
+    const book = this.currentBook;
 
     const config = vscode.workspace.getConfiguration("readermate");
     const step = config.get<number>("commentReader.lines", 1);
@@ -639,11 +680,12 @@ export class CommentReaderController implements vscode.Disposable {
     } else {
       // 读到章首，自动返回上一章末尾
       await this.prevChapter();
+      if (!this.isCurrent(api, operation, book) || !this.isVisible) return;
     }
 
     // 2. 如果是 walk 模式才上移光标
     if (readingMode === "walk") {
-      let currentLine = editor.selection.active.line;
+      const currentLine = editor.selection.active.line;
       let prevLine = currentLine - 1;
 
       if (prevLine < 0) {
@@ -654,6 +696,7 @@ export class CommentReaderController implements vscode.Disposable {
           vscode.TextEditorRevealType.InCenterIfOutsideViewport
         );
         setTimeout(() => {
+          if (!this.isCurrent(api, operation, book)) return;
           if (editor.visibleRanges.length > 0) {
             this.lastVisibleTopLine = editor.visibleRanges[0].start.line;
           }
@@ -680,40 +723,24 @@ export class CommentReaderController implements vscode.Disposable {
    * 跨入下一章
    */
   public async nextChapter(): Promise<void> {
-    if (this.isChangingChapter || !this.currentBook) {
-      return;
-    }
-
-    if (this.currentChapterIndex + 1 < this.chapters.length) {
-      logger.info(
-        `注释阅读自动切入下一章: 第${this.currentChapterIndex + 2}章`,
-        "CommentReader"
-      );
-      await this.loadChapter(this.currentChapterIndex + 1, 0);
-    }
+    if (this.isChangingChapter || !this.currentBook) return;
+    const position = this.chapters.findIndex(chapter => chapter.index === this.currentChapterIndex);
+    const next = this.chapters.slice(position + 1).find(chapter => !chapter.isVolume);
+    if (next) await this.loadChapter(next.index, 0);
   }
 
-  /**
-   * 返回上一章
-   */
+  /** 返回上一可读章节，卷名不参与导航。 */
   public async prevChapter(): Promise<void> {
-    if (this.isChangingChapter || !this.currentBook) {
-      return;
-    }
-
-    if (this.currentChapterIndex > 0) {
-      logger.info(
-        `注释阅读切入上一章: 第${this.currentChapterIndex}章`,
-        "CommentReader"
-      );
-      await this.loadChapter(this.currentChapterIndex - 1, -1);
-    }
+    if (this.isChangingChapter || !this.currentBook) return;
+    const position = this.chapters.findIndex(chapter => chapter.index === this.currentChapterIndex);
+    const previous = this.chapters.slice(0, position).reverse().find(chapter => !chapter.isVolume);
+    if (previous) await this.loadChapter(previous.index, -1);
   }
 
   /**
    * 设定当前正在阅读的图书和章节
    */
-  public async setBook(bookInput: unknown, chapterIndex = 0): Promise<void> {
+  public async setBook(bookInput: unknown, chapterIndex?: number): Promise<void> {
     if (!bookInput || typeof bookInput !== "object") {
       return;
     }
@@ -742,15 +769,26 @@ export class CommentReaderController implements vscode.Disposable {
       return;
     }
 
+    const api = this.apiClient;
+    if (this.disposed || !api.isActive || !api.ownsBook(book)) return;
+    const operation = ++this.bookOperation;
+    this.chapterOperation++;
     this.currentBook = book;
     this.currentChapterIndex = chapterIndex ?? book.durChapterIndex ?? 0;
+    this.chapters = [];
+    this.chapterContent = null;
+    this.sentences = [];
     this.sentenceIndex = 0;
+    this.isChangingChapter = false;
+    this.preloadManager.clearCurrentBook();
 
     try {
-      this.chapters = await this.apiClient.getChapterList(book.bookUrl);
+      const chapters = await api.getChapterList(book.bookUrl);
+      if (!this.isCurrent(api, operation, book)) return;
+      this.chapters = chapters;
       await this.loadChapter(this.currentChapterIndex, 0);
     } catch (err) {
-      logger.error(err as Error, "CommentReader:setBook");
+      if (this.isCurrent(api, operation, book)) logger.error(err as Error, "CommentReader:setBook");
     }
   }
 
@@ -763,57 +801,31 @@ export class CommentReaderController implements vscode.Disposable {
     chapterIndex: number,
     targetSentenceIndex = 0
   ): Promise<void> {
-    if (!this.currentBook) {
-      return;
-    }
-
+    const api = this.apiClient;
+    const operation = this.bookOperation;
+    const book = this.currentBook;
+    if (!book || !this.isCurrent(api, operation, book)) return;
+    const chapter = this.chapters.find(item => !item.isVolume && item.index >= chapterIndex) ||
+      this.chapters.find(item => !item.isVolume);
+    if (!chapter) return;
+    const load = ++this.chapterOperation;
     this.isChangingChapter = true;
-    this.currentChapterIndex = chapterIndex;
-
     try {
-      const bookUrl = this.currentBook.bookUrl;
-      this.preloadManager.setCurrentBook(bookUrl, this.chapters.length);
-
-      // 从 PreloadManager 获取（优先从缓存命中，未命中自动请求 API 并缓存）
-      const contentObj = await this.preloadManager.getChapterContent(
-        bookUrl,
-        chapterIndex
-      );
-
-      this.chapterContent = contentObj;
-
-      // 切分成句
-      this.sentences = splitIntoSentences(contentObj.content);
-
-      if (targetSentenceIndex === -1) {
-        this.sentenceIndex = Math.max(0, this.sentences.length - 1);
-      } else {
-        this.sentenceIndex = Math.min(
-          targetSentenceIndex,
-          Math.max(0, this.sentences.length - 1)
-        );
-      }
-
-      // 保存进度
+      this.preloadManager.setCurrentBook(book.bookUrl, this.chapters);
+      const content = await this.preloadManager.getChapterContent(book.bookUrl, chapter.index);
+      if (!this.isCurrent(api, operation, book) || load !== this.chapterOperation) return;
+      this.currentChapterIndex = chapter.index;
+      this.chapterContent = { ...content, title: chapter.title || content.title };
+      this.sentences = splitIntoSentences(content.content);
+      this.sentenceIndex = targetSentenceIndex === -1 ? Math.max(0, this.sentences.length - 1) :
+        Math.max(0, Math.min(targetSentenceIndex, Math.max(0, this.sentences.length - 1)));
       this.saveState();
-
-      // 重新渲染
-      if (this.isVisible) {
-        this.render();
-      }
-
-      // 静默通知预加载管理器触发后续章节预加载
-      this.preloadManager.onReadingProgress({
-        chapterIndex,
-        progress: Math.floor(
-          (this.sentenceIndex / Math.max(1, this.sentences.length)) * 100
-        ),
-        totalChapters: this.chapters.length,
-      });
+      if (this.isVisible) this.render();
+      this.checkPreload();
     } catch (err) {
-      logger.error(err as Error, "CommentReader:loadChapter");
+      if (this.isCurrent(api, operation, book) && load === this.chapterOperation) logger.error(err as Error, "CommentReader:loadChapter");
     } finally {
-      this.isChangingChapter = false;
+      if (this.isCurrent(api, operation, book) && load === this.chapterOperation) this.isChangingChapter = false;
     }
   }
 
@@ -839,19 +851,18 @@ export class CommentReaderController implements vscode.Disposable {
    * 保存阅读进度
    */
   private saveState(): void {
-    if (!this.currentBook) {
-      return;
-    }
+    const api = this.apiClient;
+    const book = this.currentBook;
+    if (!book || !this.isCurrent(api, this.bookOperation, book) || !this.chapterContent) return;
 
-    this.context.globalState.update("readermate.commentReader.state", {
-      book: this.currentBook,
+    this.context.globalState.update(`readermate.commentReader.state.${api.stateKey}`, {
+      book,
       chapterIndex: this.currentChapterIndex,
       sentenceIndex: this.sentenceIndex,
     });
 
-    // 同时向后端同步保存阅读进度
-    this.apiClient
-      .saveBookProgress(this.currentBook.bookUrl, this.currentChapterIndex)
+    api
+      .saveBookProgress(book.bookUrl, this.currentChapterIndex)
       .catch((err) => {
         logger.warn(`保存阅读进度失败: ${err}`, "CommentReader:saveState");
       });
@@ -859,14 +870,14 @@ export class CommentReaderController implements vscode.Disposable {
   /**
    * 恢复历史进度
    */
-  private async restoreState(): Promise<void> {
+  private restoreState(): void {
     const saved = this.context.globalState.get<{
       book: Book;
       chapterIndex: number;
       sentenceIndex: number;
-    }>("readermate.commentReader.state");
+    }>(`readermate.commentReader.state.${this.apiClient.stateKey}`);
 
-    if (saved && saved.book) {
+    if (saved?.book && this.apiClient.isActive && this.apiClient.ownsBook(saved.book)) {
       this.currentBook = saved.book;
       this.currentChapterIndex = saved.chapterIndex || 0;
       this.sentenceIndex = saved.sentenceIndex || 0;
@@ -877,34 +888,38 @@ export class CommentReaderController implements vscode.Disposable {
    * 确保内容已加载
    */
   private async ensureContentLoaded(): Promise<void> {
+    const api = this.apiClient;
+    const operation = this.bookOperation;
+    if (!this.isCurrent(api, operation)) return;
+    if (!this.currentBook) this.restoreState();
     if (!this.currentBook) {
-      let books = this.bookshelfProvider.getBooks();
+      let books = this.bookshelfProvider.getBooks().filter(book => api.ownsBook(book));
       if (books.length === 0) {
         try {
-          books = await this.apiClient.getBookshelf();
-        } catch (e) {
-          logger.warn(
-            `异步获取书架失败: ${e}`,
-            "CommentReader:ensureContentLoaded"
-          );
+          books = await api.getBookshelf();
+          if (!this.isCurrent(api, operation)) return;
+        } catch (error) {
+          if (!this.isCurrent(api, operation)) return;
+          logger.warn(`异步获取书架失败: ${error}`, "CommentReader:ensureContentLoaded");
         }
       }
-      if (books.length > 0) {
-        this.currentBook = books[0];
-        this.currentChapterIndex = books[0].durChapterIndex || 0;
+      const book = books.find(item => api.ownsBook(item));
+      if (book) {
+        this.currentBook = book;
+        this.currentChapterIndex = book.durChapterIndex ?? 0;
       }
     }
-
-    if (this.currentBook && this.sentences.length === 0) {
+    const book = this.currentBook;
+    if (book && this.sentences.length === 0) {
       try {
         if (this.chapters.length === 0) {
-          this.chapters = await this.apiClient.getChapterList(
-            this.currentBook.bookUrl
-          );
+          const chapters = await api.getChapterList(book.bookUrl);
+          if (!this.isCurrent(api, operation, book)) return;
+          this.chapters = chapters;
         }
-        await this.loadChapter(this.currentChapterIndex, this.sentenceIndex);
-      } catch (err) {
-        logger.error(err as Error, "CommentReader:ensureContentLoaded");
+        if (this.isCurrent(api, operation, book)) await this.loadChapter(this.currentChapterIndex, this.sentenceIndex);
+      } catch (error) {
+        if (this.isCurrent(api, operation, book)) logger.error(error, "CommentReader:ensureContentLoaded");
       }
     }
   }
@@ -913,6 +928,10 @@ export class CommentReaderController implements vscode.Disposable {
    * 伪装快速选章对话框（QuickPick）
    */
   public async selectChapterQuickPick(): Promise<void> {
+    const api = this.apiClient;
+    const operation = this.bookOperation;
+    const book = this.currentBook;
+    if (!this.isCurrent(api, operation, book)) return;
     if (!this.currentBook) {
       vscode.window.showInformationMessage(
         "ReaderMate：请先在书架中选择一本书籍"
@@ -921,16 +940,16 @@ export class CommentReaderController implements vscode.Disposable {
     }
 
     if (this.chapters.length === 0) {
-      this.chapters = await this.apiClient.getChapterList(
-        this.currentBook.bookUrl
-      );
+      const chapters = await api.getChapterList(this.currentBook.bookUrl);
+      if (!this.isCurrent(api, operation, book)) return;
+      this.chapters = chapters;
     }
 
     // 伪装标题为代码符号跳转，避免同事注视
-    const items = this.chapters.map((ch, index) => ({
-      label: `$(symbol-class) ${ch.title}`,
-      description: index === this.currentChapterIndex ? "当前章节" : undefined,
-      chapterIndex: index,
+    const items = this.chapters.filter(chapter => !chapter.isVolume).map(chapter => ({
+      label: `$(symbol-class) ${chapter.title}`,
+      description: chapter.index === this.currentChapterIndex ? "当前章节" : undefined,
+      chapterIndex: chapter.index,
     }));
 
     const selected = await vscode.window.showQuickPick(items, {
@@ -938,13 +957,15 @@ export class CommentReaderController implements vscode.Disposable {
       matchOnDescription: true,
     });
 
-    if (selected) {
+    if (selected && this.isCurrent(api, operation, book)) {
       await this.loadChapter(selected.chapterIndex, 0);
     }
   }
 
   public dispose(): void {
-    this.hide();
+    this.resetReadingState();
+    this.disposed = true;
+    this.preloadManager.dispose();
     this.decorationType.dispose();
     for (const d of this.disposables) {
       d.dispose();

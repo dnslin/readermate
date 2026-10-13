@@ -17,6 +17,7 @@ export class BookshelfProvider
   private books: Book[] = [];
   private apiClient: ReaderApiClient;
   private chapterCache: Map<string, Chapter[]> = new Map();
+  private generation = 0;
 
   constructor(apiClient: ReaderApiClient) {
     this.apiClient = apiClient;
@@ -24,6 +25,7 @@ export class BookshelfProvider
   }
 
   refresh(): void {
+    this.generation++;
     this.chapterCache.clear();
     this.loadBooks();
   }
@@ -33,8 +35,11 @@ export class BookshelfProvider
    */
   updateApiClient(apiClient: ReaderApiClient): void {
     logger.info("开始更新API客户端", "BookshelfProvider");
+    this.generation++;
     this.apiClient = apiClient;
+    this.books = [];
     this.chapterCache.clear();
+    this._onDidChangeTreeData.fire();
     this.loadBooks();
     logger.info("API客户端已更新，重新加载书籍列表", "BookshelfProvider");
   }
@@ -52,8 +57,12 @@ export class BookshelfProvider
     }
 
     if (element instanceof BookItem) {
+      const api = this.apiClient;
+      const generation = this.generation;
+      if (!api.isActive || !api.ownsBook(element.book)) return [];
       try {
         const chapters = await this.getChapterList(element.book.bookUrl);
+        if (!api.isActive || this.apiClient !== api || generation !== this.generation) return [];
         return chapters.map(
           (chapter) =>
             new ChapterItem(
@@ -63,6 +72,7 @@ export class BookshelfProvider
             )
         );
       } catch (error) {
+        if (!api.isActive || this.apiClient !== api || generation !== this.generation) return [];
         logger.error(error, "获取章节列表失败", "BookshelfProvider");
         return [new vscode.TreeItem("加载章节列表失败，点击重试")];
       }
@@ -72,24 +82,33 @@ export class BookshelfProvider
   }
 
   async getChapterList(bookUrl: string): Promise<Chapter[]> {
-    if (this.chapterCache.has(bookUrl)) {
-      return this.chapterCache.get(bookUrl)!;
-    }
-    const chapters = await this.apiClient.getChapterList(bookUrl);
+    const api = this.apiClient;
+    const generation = this.generation;
+    if (!api.isActive) return [];
+    const cached = this.chapterCache.get(bookUrl);
+    if (cached) return cached;
+    const chapters = await api.getChapterList(bookUrl);
+    if (!api.isActive || this.apiClient !== api || generation !== this.generation) return [];
     this.chapterCache.set(bookUrl, chapters);
     return chapters;
   }
 
   private async loadBooks() {
+    const api = this.apiClient;
+    const generation = this.generation;
+    if (!api.isActive) return;
     try {
       logger.info("开始加载书架", "BookshelfProvider");
-      this.books = await this.apiClient.getBookshelf();
+      const books = await api.getBookshelf();
+      if (!api.isActive || this.apiClient !== api || generation !== this.generation) return;
+      this.books = books;
       this._onDidChangeTreeData.fire();
       logger.info(
         `书架加载成功，共 ${this.books.length} 本书`,
         "BookshelfProvider"
       );
     } catch (error) {
+      if (!api.isActive || this.apiClient !== api || generation !== this.generation) return;
       logger.error(error, "加载书架失败", "BookshelfProvider");
       showFriendlyError("bookshelf", error, "BookshelfProvider");
     }
@@ -141,16 +160,18 @@ export class ChapterItem extends vscode.TreeItem {
     this.label = chapter.title;
     this.description = isCurrent ? "当前阅读" : undefined;
     this.tooltip = `${book.name} - ${chapter.title}`;
-    this.contextValue = "chapter";
+    this.contextValue = chapter.isVolume ? "volume" : "chapter";
 
     this.iconPath = isCurrent
       ? new vscode.ThemeIcon("bookmark", new vscode.ThemeColor("charts.yellow"))
       : new vscode.ThemeIcon("file-text");
 
-    this.command = {
-      command: "readermate.openReader",
-      title: "阅读本章",
-      arguments: [book, chapter.index],
-    };
+    if (!chapter.isVolume) {
+      this.command = {
+        command: "readermate.openReader",
+        title: "阅读本章",
+        arguments: [book, chapter.index],
+      };
+    }
   }
 }

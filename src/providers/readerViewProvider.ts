@@ -66,7 +66,11 @@ export class ReaderViewProvider
     });
 
     webviewView.onDidDispose(() => {
-      this.dispose();
+      if (this._view !== webviewView) return;
+      this._pendingBook = undefined;
+      this.resetReadingState();
+      this._view = undefined;
+      vscode.commands.executeCommand("setContext", "readermate.readerFocused", false);
     });
 
     vscode.commands.executeCommand(
@@ -87,7 +91,13 @@ export class ReaderViewProvider
     }
   }
 
+  public override updateApiClient(apiClient: ReaderApiClient): void {
+    this._pendingBook = undefined;
+    super.updateApiClient(apiClient);
+  }
+
   public override async openBook(book: Book, chapterIndex?: number): Promise<void> {
+    if (!this.apiClient.isActive || !this.apiClient.ownsBook(book)) return;
     if (!this._view) {
       this._pendingBook = { book, chapterIndex };
       vscode.commands.executeCommand("readermateReaderPanel.focus");
@@ -97,6 +107,8 @@ export class ReaderViewProvider
   }
 
   public dispose() {
+    this._pendingBook = undefined;
+    this.resetReadingState();
     this.preloadManager.dispose();
     this._view = undefined;
     vscode.commands.executeCommand(

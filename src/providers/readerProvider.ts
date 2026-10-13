@@ -14,6 +14,7 @@ export class ReaderProvider extends BaseReaderController {
 
   private readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
+  private _disposed = false;
 
   public static createOrShow(
     extensionUri: vscode.Uri,
@@ -23,6 +24,7 @@ export class ReaderProvider extends BaseReaderController {
     book?: Book,
     chapterIndex?: number
   ) {
+    if (!apiClient.isActive || (book && !apiClient.ownsBook(book))) return;
     const cfg = vscode.workspace.getConfiguration("readermate");
     const displayLocation = cfg.get<string>(
       "chapterDisplay.location",
@@ -196,6 +198,9 @@ export class ReaderProvider extends BaseReaderController {
   }
 
   public dispose() {
+    if (this._disposed) return;
+    this._disposed = true;
+    this.resetReadingState();
     ReaderProvider.currentPanel = undefined;
     this.preloadManager.dispose();
     this._panel.dispose();
@@ -238,21 +243,19 @@ export class ReaderPanelSerializer implements vscode.WebviewPanelSerializer {
     state: unknown
   ): Promise<void> {
     logger.info("正在恢复阅读器面板", "ReaderPanelSerializer");
+    const api = this.getApiClient();
     ReaderProvider.revive(
       webviewPanel,
       this.extensionUri,
-      this.getApiClient(),
+      api,
       this.getBookshelfProvider(),
       this.getPreloadConfig()
     );
 
     if (state && typeof state === "object") {
       const panelState = state as ReaderPanelState;
-      if (panelState.book && ReaderProvider.currentPanel) {
-        ReaderProvider.currentPanel.openBook(
-          panelState.book,
-          panelState.chapterIndex
-        );
+      if (panelState.book && api.isActive && api.ownsBook(panelState.book) && ReaderProvider.currentPanel) {
+        await ReaderProvider.currentPanel.openBook(panelState.book, panelState.chapterIndex);
       }
     }
   }

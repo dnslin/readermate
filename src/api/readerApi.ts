@@ -1,226 +1,83 @@
-import * as https from "node:https";
-import * as http from "node:http";
-import { URL } from "node:url";
-import * as vscode from "vscode";
-import { Book, Chapter, BookContent, UserInfo, ApiRequestOptions } from "./types";
+import { createHash } from "node:crypto";
+import { HttpTransport } from "./httpTransport";
+import { LegadoBackend } from "./legadoBackend";
+import { Reader3Backend } from "./reader3Backend";
+import { Book, Chapter, BookContent, ReaderBackendConfig } from "./types";
 import { logger } from "../utils/logger";
 
+/** One connection/account session. Construct only the explicitly selected protocol. */
 export class ReaderApiClient {
-  private baseUrl: string;
-  private accessToken?: string;
-  private outputChannel?: vscode.OutputChannel;
+  readonly stateKey: string;
+  private readonly transport = new HttpTransport();
+  private readonly backend: Reader3Backend | LegadoBackend | Error;
 
-  constructor(
-    baseUrl: string,
-    accessToken?: string,
-    outputChannel?: vscode.OutputChannel,
-    appendReader3Path: boolean = true
-  ) {
-    // 确保baseUrl以斜杠结尾
-    let normalizedUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
-    // 根据配置决定是否添加reader3路径
-    if (appendReader3Path && !normalizedUrl.includes("/reader3/")) {
-      normalizedUrl = normalizedUrl + "reader3/";
-    }
-    this.baseUrl = normalizedUrl;
-    this.accessToken = accessToken;
-    this.outputChannel = outputChannel;
-
-    logger.info(`创建API客户端，baseUrl: ${this.baseUrl}`, "ReaderApiClient");
-  }
-
-  private async request<T = unknown>(
-    path: string,
-    options: ApiRequestOptions = {}
-  ): Promise<T> {
-    // 使用URL构造函数正确拼接路径，path应该以斜杠开头
-    const apiPath = path.startsWith("/") ? path.substring(1) : path;
-    const url = new URL(apiPath, this.baseUrl);
-
-    // 添加 accessToken 参数
-    if (this.accessToken) {
-      url.searchParams.set("accessToken", this.accessToken);
-      url.searchParams.set("v", Date.now().toString());
-    }
-
-    const logMessage = `发起API请求: ${url.toString()}`;
-    logger.info(logMessage, "ReaderApiClient");
-
-    // 添加POST数据调试信息
-    if (options.method === "POST" && options.data) {
-      const postDataMessage = `POST数据: ${JSON.stringify(
-        options.data,
-        null,
-        2
-      )}`;
-      logger.debug(postDataMessage, "ReaderApiClient");
-    }
-
-    return new Promise<T>((resolve, reject) => {
-      const client = url.protocol === "https:" ? https : http;
-      const requestOptions: https.RequestOptions = {
-        method: options.method || "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-          ...options.headers,
-        },
-      };
-      logger.info(
-        `请求头: ${JSON.stringify(requestOptions.headers, null, 2)}`,
-        "ReaderApiClient"
-      );
-      const req = client.request(
-        url,
-        requestOptions,
-        (res: http.IncomingMessage) => {
-          // 设置响应编码为UTF-8以正确处理中文字符
-          res.setEncoding("utf8");
-          let data = "";
-          res.on("data", (chunk: string) => (data += chunk));
-          res.on("end", () => {
-            const statusMessage = `API响应状态码: ${res.statusCode}`;
-            const contentMessage = `API响应内容: ${data}`;
-            logger.debug(statusMessage, "ReaderApiClient");
-            logger.debug(contentMessage, "ReaderApiClient");
-
-            if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-              if (res.statusCode === 401) {
-                reject(new Error("身份认证失败 (HTTP 401)，请检查用户名和 Token 是否正确"));
-                return;
-              }
-              if (res.statusCode === 403) {
-                reject(new Error("访问被拒绝 (HTTP 403)，请确认 Token 权限或服务器防火墙"));
-                return;
-              }
-              if (res.statusCode === 404) {
-                reject(new Error("接口未找到 (HTTP 404)，请检查服务器地址或路径前缀"));
-                return;
-              }
-              if (res.statusCode >= 500) {
-                reject(new Error(`服务器内部错误 (HTTP ${res.statusCode})，请检查 Reader3 后端日志`));
-                return;
-              }
-            }
-
-            const trimmed = data.trim();
-            if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
-              reject(new Error(`服务器返回了 HTML 页面而非接口数据 (HTTP ${res.statusCode})，请确认 Reader3 服务器基础地址是否正确`));
-              return;
-            }
-
-            try {
-              const result = JSON.parse(data);
-              if (result && typeof result === "object" && "isSuccess" in result) {
-                if (result.isSuccess) {
-                  resolve(result.data);
-                } else {
-                  reject(new Error(result.errorMsg || "请求失败"));
-                }
-              } else {
-                resolve(result);
-              }
-            } catch {
-              const errorMessage = `JSON解析失败，原始响应: ${data.substring(0, 120)}`;
-              logger.error(new Error(errorMessage), undefined, "ReaderApiClient");
-              reject(new Error(`响应数据解析失败 (HTTP ${res.statusCode || "未知"})`));
-            }
-          });
-        }
-      );
-
-      req.on("error", (err) => {
-        logger.error(err, "网络请求失败", "ReaderApiClient");
-        // 返回更友好的错误信息
-        reject(new Error("无法连接服务器或请求失败，请检查网络或服务器地址"));
-      });
-
-      if (options.data) {
-        req.write(JSON.stringify(options.data));
+  constructor(config: ReaderBackendConfig) {
+    let baseIdentity = config.serverUrl;
+    try {
+      const baseUrl = new URL(config.serverUrl);
+      if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
+        throw new Error("服务器地址必须使用 HTTP 或 HTTPS");
       }
-
-      req.end();
-    });
+      baseUrl.pathname = baseUrl.pathname.replace(/\/+$/, "") + "/";
+      if (config.backend === "reader3") {
+        if (config.appendReader3Path && !baseUrl.pathname.includes("/reader3/")) {
+          baseUrl.pathname += "reader3/";
+        }
+        this.backend = new Reader3Backend(this.transport, baseUrl, config.accessToken);
+      } else {
+        if (!baseUrl.pathname.endsWith("/openapi/v1/")) baseUrl.pathname += "openapi/v1/";
+        this.backend = new LegadoBackend(this.transport, baseUrl, config.apiKey);
+      }
+      baseIdentity = baseUrl.href;
+    } catch (cause) {
+      // A malformed setting must not prevent activation/configuration or revive the old session.
+      this.backend = Object.assign(new Error("服务器地址无效，请配置有效的 HTTP 或 HTTPS 地址"), { cause });
+    }
+    const credential = config.backend === "reader3" ? config.accessToken || "" : config.apiKey;
+    this.stateKey = `${config.backend}:${createHash("sha256")
+      .update(JSON.stringify([config.backend, baseIdentity, credential]))
+      .digest("hex")}`;
+    logger.info(`创建 ${config.backend} API客户端`, "ReaderApiClient");
   }
 
-  async getUserInfo(): Promise<UserInfo> {
-    return this.request<UserInfo>("/getUserInfo");
+  get isActive(): boolean {
+    return this.transport.isActive;
+  }
+
+  dispose(): void {
+    this.transport.dispose();
+  }
+
+  ownsBook(book: Book): boolean {
+    return book.sourceKey === this.stateKey;
+  }
+
+  private getBackend(): Reader3Backend | LegadoBackend {
+    this.transport.assertActive();
+    if (this.backend instanceof Error) throw this.backend;
+    return this.backend;
   }
 
   async getBookshelf(): Promise<Book[]> {
-    const result = await this.request<Book[]>("/getBookshelf");
-    return result || [];
+    const books = await this.getBackend().getBookshelf();
+    this.transport.assertActive();
+    return books.map((book) => ({ ...book, sourceKey: this.stateKey }));
   }
 
   async getChapterList(bookUrl: string): Promise<Chapter[]> {
-    const result = await this.request<Chapter[]>(
-      `/getChapterList?url=${encodeURIComponent(bookUrl)}`
-    );
-    return result || [];
+    const chapters = await this.getBackend().getChapterList(bookUrl);
+    this.transport.assertActive();
+    return chapters;
   }
 
-  async getBookContent(
-    bookUrl: string,
-    chapterIndex: number
-  ): Promise<BookContent> {
-    const result = await this.request<unknown>(
-      `/getBookContent?url=${encodeURIComponent(bookUrl)}&index=${chapterIndex}`
-    );
-
-    const logMessage = `getBookContent API原始响应: ${JSON.stringify(
-      result,
-      null,
-      2
-    )}`;
-    logger.debug(logMessage, "ReaderApiClient");
-
-    // API返回的可能是字符串内容或对象，需要转换为BookContent格式
-    let contentText = "";
-    if (typeof result === "string") {
-      contentText = result;
-    } else if (result && typeof result === "object") {
-      const obj = result as Record<string, unknown>;
-      if (typeof obj.content === "string") {
-        contentText = obj.content;
-      } else if (typeof obj.text === "string") {
-        contentText = obj.text;
-      }
-    }
-    const bookContent: BookContent = {
-      title: `第${chapterIndex + 1}章`, // 使用章节索引生成标题
-      content: contentText,
-      nextUrl: undefined,
-      prevUrl: undefined,
-    };
-
-    logger.debug(
-      `转换后的BookContent: title="${bookContent.title}", content长度=${bookContent.content.length}`,
-      "ReaderApiClient"
-    );
-
-    return bookContent;
+  async getBookContent(bookUrl: string, index: number): Promise<BookContent> {
+    const content = await this.getBackend().getBookContent(bookUrl, index);
+    this.transport.assertActive();
+    return content;
   }
 
-  async saveBookProgress(
-    bookUrl: string,
-    durChapterIndex: number
-  ): Promise<void> {
-    const progressData = {
-      url: bookUrl,
-      index: durChapterIndex,
-    };
-
-    logger.debug(
-      `保存阅读进度: ${JSON.stringify(progressData, null, 2)}`,
-      "ReaderApiClient"
-    );
-
-    return this.request("/saveBookProgress", {
-      method: "POST",
-      data: progressData,
-    });
+  async saveBookProgress(bookUrl: string, index: number): Promise<void> {
+    await this.getBackend().saveBookProgress(bookUrl, index);
+    this.transport.assertActive();
   }
 }

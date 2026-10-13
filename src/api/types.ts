@@ -1,7 +1,23 @@
+/** Only the selected backend's settings are supplied to an API session. */
+export type ReaderBackendConfig =
+  | {
+      backend: "reader3";
+      serverUrl: string;
+      accessToken?: string;
+      appendReader3Path: boolean;
+    }
+  | {
+      backend: "legado";
+      serverUrl: string;
+      apiKey: string;
+    };
+
 export interface Book {
   name: string;
   author: string;
   bookUrl: string;
+  /** Opaque connection/account identity; old or foreign books cannot be reopened. */
+  sourceKey: string;
   coverUrl?: string;
   lastChapter?: string;
   readProgress?: number;
@@ -14,6 +30,8 @@ export interface Chapter {
   title: string;
   url: string;
   index: number;
+  /** A volume heading has an index but no readable content. */
+  isVolume?: boolean;
 }
 
 export interface BookContent {
@@ -21,17 +39,6 @@ export interface BookContent {
   content: string;
   nextUrl?: string;
   prevUrl?: string;
-}
-
-export interface UserInfo {
-  username?: string;
-  [key: string]: unknown;
-}
-
-export interface ApiRequestOptions {
-  method?: "GET" | "POST" | string;
-  headers?: Record<string, string>;
-  data?: unknown;
 }
 
 export type WebviewIncomingMessage =

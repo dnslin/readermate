@@ -1,371 +1,201 @@
 import { ReaderApiClient } from "../api/readerApi";
-import { BookContent } from "../api/types";
+import { BookContent, Chapter } from "../api/types";
 import { PreloadCache } from "./preloadCache";
-import {
-  PreloadConfig,
-  PreloadTask,
-  PreloadStatus,
-  ReadingProgressEvent,
-} from "./types";
+import { PreloadConfig, PreloadTask, PreloadStatus, ReadingProgressEvent } from "./types";
 import { logger } from "../utils/logger";
 
-/**
- * 预加载管理器
- * 负责管理章节预加载逻辑、任务队列和缓存策略
- */
+/** Caches and queued requests belong to one backend/book session. */
 export class PreloadManager {
   private cache: PreloadCache;
   private apiClient: ReaderApiClient;
   private config: PreloadConfig;
-  private preloadQueue: Map<string, PreloadTask> = new Map();
-  private isPreloading: boolean = false;
-  private retryAttempts: Map<string, number> = new Map();
-  private currentBook?: { url: string; totalChapters: number };
-  private lastTriggeredProgress: number = 0;
-
-  // 常量配置
+  private preloadQueue = new Map<string, PreloadTask>();
+  private currentBook?: { url: string; chapters: Chapter[] };
+  private lastTriggeredProgress = 0;
+  private lastChapterIndex?: number;
+  private generation = 0;
+  private runningGeneration?: number;
+  private disposed = false;
+  private cleanupInterval: NodeJS.Timeout;
+  private timers = new Map<NodeJS.Timeout, (() => void) | undefined>();
   private readonly MAX_RETRY_ATTEMPTS = 3;
-  private readonly RETRY_DELAY_BASE = 2000; // 2秒基础延迟
-  private readonly PRELOAD_TIMEOUT = 30000; // 30秒超时
+  private readonly RETRY_DELAY_BASE = 2000;
+  private readonly PRELOAD_TIMEOUT = 30000;
 
   constructor(apiClient: ReaderApiClient, config: PreloadConfig) {
     this.apiClient = apiClient;
     this.config = config;
     this.cache = new PreloadCache(config.maxCacheSize);
-
-    // 定期清理过期缓存
-    setInterval(() => {
-      this.cache.cleanExpired();
-    }, 10 * 60 * 1000); // 每10分钟清理一次
+    this.cleanupInterval = setInterval(() => this.cache.cleanExpired(), 10 * 60 * 1000);
   }
 
-  /**
-   * 更新配置
-   */
   updateConfig(config: PreloadConfig): void {
     this.config = config;
     this.cache.setMaxSize(config.maxCacheSize);
-
-    if (!config.enabled) {
-      this.clearPreloadQueue();
-    }
-
-    logger.info(`配置已更新: ${JSON.stringify(config)}`, "PreloadManager");
+    if (!config.enabled) this.clearPreloadQueue();
   }
 
-  /**
-   * 更新API客户端
-   */
   updateApiClient(apiClient: ReaderApiClient): void {
-    logger.info("开始更新API客户端", "PreloadManager");
+    this.clearCurrentBook();
     this.apiClient = apiClient;
-
-    // 清空当前的预加载队列，因为API客户端已变更
-    this.clearPreloadQueue();
-
-    // 清空缓存，因为可能连接到不同的服务器
-    this.cache.clear();
-
-    logger.info("API客户端已更新，缓存和队列已清空", "PreloadManager");
   }
 
-  /**
-   * 设置当前书籍信息
-   */
-  setCurrentBook(bookUrl: string, totalChapters: number): void {
-    // 如果切换了书籍，清空预加载队列
-    if (this.currentBook?.url !== bookUrl) {
-      this.clearPreloadQueue();
+  clearCurrentBook(): void {
+    this.clearPreloadQueue();
+    this.currentBook = undefined;
+    this.lastTriggeredProgress = 0;
+    this.lastChapterIndex = undefined;
+    this.cache.clear();
+  }
+
+  setCurrentBook(bookUrl: string, chapters: Chapter[]): void {
+    if (this.disposed || !this.apiClient.isActive) return;
+    if (this.currentBook?.url !== bookUrl || this.currentBook.chapters !== chapters) {
+      this.clearCurrentBook();
+      this.currentBook = { url: bookUrl, chapters };
+    }
+  }
+
+  private isCurrent(api: ReaderApiClient, generation: number): boolean {
+    return !this.disposed && api.isActive && this.apiClient === api && this.generation === generation;
+  }
+
+
+  onReadingProgress(event: ReadingProgressEvent): void {
+    if (!this.config.enabled || !this.currentBook || this.disposed || !this.apiClient.isActive) return;
+    if (this.lastChapterIndex !== event.chapterIndex) {
+      this.lastChapterIndex = event.chapterIndex;
       this.lastTriggeredProgress = 0;
     }
-
-    this.currentBook = { url: bookUrl, totalChapters };
-    logger.info(`设置当前书籍: ${bookUrl}, 总章节数: ${totalChapters}`, "PreloadManager");
-  }
-
-  /**
-   * 生成任务键
-   */
-  private generateTaskKey(bookUrl: string, chapterIndex: number): string {
-    return `${bookUrl}#${chapterIndex}`;
-  }
-
-  /**
-   * 处理阅读进度更新
-   */
-  onReadingProgress(event: ReadingProgressEvent): void {
-    if (!this.config.enabled || !this.currentBook) {
-      logger.debug(
-        `预加载已禁用或无当前书籍: enabled=${this.config.enabled}, hasBook=${!!this.currentBook}`,
-        "PreloadManager"
-      );
-      return;
-    }
-
-    const { chapterIndex, progress, totalChapters } = event;
-
-    logger.debug(
-      `收到阅读进度: 第${chapterIndex + 1}章 ${progress}%, 触发阈值: ${this.config.triggerProgress}%, 上次触发: ${this.lastTriggeredProgress}%`,
-      "PreloadManager"
-    );
-
-    // 避免重复触发预加载
-    if (Math.abs(progress - this.lastTriggeredProgress) < 5) {
-      logger.debug(
-        `进度变化不足5%，跳过预加载: ${Math.abs(progress - this.lastTriggeredProgress)}%`,
-        "PreloadManager"
-      );
-      return;
-    }
-
-    // 检查是否达到预加载触发条件
-    if (progress >= this.config.triggerProgress) {
-      logger.info(
-        `达到预加载触发条件: ${progress}% >= ${this.config.triggerProgress}%`,
-        "PreloadManager"
-      );
-      this.lastTriggeredProgress = progress;
-      this.triggerPreload(this.currentBook.url, chapterIndex, totalChapters);
-    } else {
-      logger.debug(
-        `未达到预加载触发条件: ${progress}% < ${this.config.triggerProgress}%`,
-        "PreloadManager"
-      );
+    if (Math.abs(event.progress - this.lastTriggeredProgress) < 5) return;
+    if (event.progress >= this.config.triggerProgress) {
+      this.lastTriggeredProgress = event.progress;
+      void this.triggerPreload(this.currentBook.url, event.chapterIndex);
     }
   }
 
-  /**
-   * 触发预加载
-   */
-  private async triggerPreload(
-    bookUrl: string,
-    currentChapterIndex: number,
-    totalChapters: number
-  ): Promise<void> {
-    if (!this.config.enabled) {
-      return;
-    }
-
-    const startIndex = currentChapterIndex + 1;
-    const endIndex = Math.min(
-      startIndex + this.config.chapterCount - 1,
-      totalChapters - 1
-    );
-
-    logger.info(
-      `触发预加载: 第${startIndex + 1}章 到 第${endIndex + 1}章`,
-      "PreloadManager"
-    );
-
-    for (let i = startIndex; i <= endIndex; i++) {
-      // 检查是否已经缓存或正在预加载
-      if (!this.cache.has(bookUrl, i) && !this.isChapterInQueue(bookUrl, i)) {
-        await this.addPreloadTask(bookUrl, i);
+  private async triggerPreload(bookUrl: string, chapterIndex: number): Promise<void> {
+    if (!this.config.enabled || !this.currentBook || this.currentBook.url !== bookUrl || this.disposed || !this.apiClient.isActive) return;
+    const position = this.currentBook.chapters.findIndex(chapter => chapter.index === chapterIndex);
+    if (position < 0) return;
+    const upcoming = this.currentBook.chapters.slice(position + 1)
+      .filter(chapter => !chapter.isVolume).slice(0, this.config.chapterCount);
+    for (const chapter of upcoming) {
+      const key = `${bookUrl}#${chapter.index}`;
+      if (!this.cache.has(bookUrl, chapter.index) && !this.preloadQueue.has(key)) {
+        this.preloadQueue.set(key, {
+          bookUrl, chapterIndex: chapter.index, status: PreloadStatus.IDLE,
+          retryCount: 0, createdAt: Date.now(),
+        });
       }
     }
-
-    this.processPreloadQueue();
+    await this.processPreloadQueue();
   }
 
-  /**
-   * 检查章节是否在预加载队列中
-   */
-  private isChapterInQueue(bookUrl: string, chapterIndex: number): boolean {
-    const key = this.generateTaskKey(bookUrl, chapterIndex);
-    return this.preloadQueue.has(key);
-  }
-
-  /**
-   * 添加预加载任务
-   */
-  private async addPreloadTask(
-    bookUrl: string,
-    chapterIndex: number
-  ): Promise<void> {
-    const key = this.generateTaskKey(bookUrl, chapterIndex);
-
-    const task: PreloadTask = {
-      bookUrl,
-      chapterIndex,
-      status: PreloadStatus.IDLE,
-      retryCount: 0,
-      createdAt: Date.now(),
-    };
-
-    this.preloadQueue.set(key, task);
-    logger.debug(`添加预加载任务: 第${chapterIndex + 1}章`, "PreloadManager");
-  }
-
-  /**
-   * 处理预加载队列
-   */
   private async processPreloadQueue(): Promise<void> {
-    if (this.isPreloading || this.preloadQueue.size === 0) {
-      return;
-    }
-
-    this.isPreloading = true;
-
+    const api = this.apiClient;
+    const generation = this.generation;
+    if (!this.isCurrent(api, generation) || !this.config.enabled || this.runningGeneration === generation) return;
+    this.runningGeneration = generation;
     try {
-      // 按章节顺序处理任务
-      const tasks = Array.from(this.preloadQueue.values())
-        .filter((task) => task.status === PreloadStatus.IDLE)
-        .sort((a, b) => a.chapterIndex - b.chapterIndex);
-
-      for (const task of tasks) {
-        if (!this.config.enabled) {
-          break;
-        }
-
-        await this.executePreloadTask(task);
-
-        // 添加小延迟，避免过于频繁的请求
+      while (this.isCurrent(api, generation) && this.config.enabled) {
+        const task = Array.from(this.preloadQueue.values()).find(item => item.status === PreloadStatus.IDLE);
+        if (!task) break;
+        await this.executePreloadTask(task, api, generation);
+        if (!this.isCurrent(api, generation)) break;
         await this.delay(500);
       }
     } finally {
-      this.isPreloading = false;
+      if (this.runningGeneration === generation) this.runningGeneration = undefined;
     }
   }
 
-  /**
-   * 执行预加载任务
-   */
-  private async executePreloadTask(task: PreloadTask): Promise<void> {
-    const key = this.generateTaskKey(task.bookUrl, task.chapterIndex);
-
+  private async executePreloadTask(task: PreloadTask, api: ReaderApiClient, generation: number): Promise<void> {
+    if (!this.isCurrent(api, generation)) return;
+    const key = `${task.bookUrl}#${task.chapterIndex}`;
+    task.status = PreloadStatus.LOADING;
+    let timeout: NodeJS.Timeout | undefined;
     try {
-      task.status = PreloadStatus.LOADING;
-      logger.info(`开始预加载: 第${task.chapterIndex + 1}章`, "PreloadManager");
-
-      const content = await Promise.race([
-        this.apiClient.getBookContent(task.bookUrl, task.chapterIndex),
-        this.createTimeoutPromise(this.PRELOAD_TIMEOUT),
-      ]);
-
+      const expiry = new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          if (timeout) this.timers.delete(timeout);
+          reject(new Error("预加载超时"));
+        }, this.PRELOAD_TIMEOUT);
+        this.timers.set(timeout, () => reject(new Error("阅读会话已结束")));
+      });
+      const content = await Promise.race([api.getBookContent(task.bookUrl, task.chapterIndex), expiry]);
+      if (!this.isCurrent(api, generation)) return;
       this.cache.set(task.bookUrl, task.chapterIndex, content);
-      task.status = PreloadStatus.COMPLETED;
       this.preloadQueue.delete(key);
-      this.retryAttempts.delete(key);
-
-      logger.info(`预加载完成: 第${task.chapterIndex + 1}章`, "PreloadManager");
     } catch (error) {
-      logger.error(error, `预加载失败: 第${task.chapterIndex + 1}章`, "PreloadManager");
+      if (!this.isCurrent(api, generation)) return;
       this.cache.recordPreloadFailure();
-
-      await this.handlePreloadError(task, error);
+      logger.warn(`预加载失败: ${String(error)}`, "PreloadManager");
+      if (task.retryCount >= this.MAX_RETRY_ATTEMPTS) {
+        this.preloadQueue.delete(key);
+      } else {
+        const delay = this.RETRY_DELAY_BASE * Math.pow(2, task.retryCount++);
+        task.status = PreloadStatus.FAILED;
+        const retry = setTimeout(() => {
+          this.timers.delete(retry);
+          if (!this.isCurrent(api, generation) || this.preloadQueue.get(key) !== task) return;
+          task.status = PreloadStatus.IDLE;
+          void this.processPreloadQueue();
+        }, delay);
+        this.timers.set(retry, undefined);
+      }
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+        this.timers.delete(timeout);
+      }
     }
   }
 
-  /**
-   * 处理预加载错误
-   */
-  private async handlePreloadError(
-    task: PreloadTask,
-    error: unknown
-  ): Promise<void> {
-    const key = this.generateTaskKey(task.bookUrl, task.chapterIndex);
-    const attempts = this.retryAttempts.get(key) || 0;
-
-    if (attempts < this.MAX_RETRY_ATTEMPTS) {
-      this.retryAttempts.set(key, attempts + 1);
-      task.status = PreloadStatus.IDLE;
-      task.retryCount = attempts + 1;
-
-      // 指数退避重试
-      const delay = this.RETRY_DELAY_BASE * Math.pow(2, attempts);
-      logger.warn(
-        `将在${delay}ms后重试预加载第${task.chapterIndex + 1}章 (第${
-          attempts + 1
-        }次重试)`,
-        "PreloadManager"
-      );
-
-      setTimeout(() => {
-        if (this.preloadQueue.has(key)) {
-          this.processPreloadQueue();
-        }
-      }, delay);
-    } else {
-      task.status = PreloadStatus.FAILED;
-      this.preloadQueue.delete(key);
-      this.retryAttempts.delete(key);
-      logger.error(
-        new Error(
-          `预加载第${task.chapterIndex + 1}章失败，已达到最大重试次数`
-        ),
-        undefined,
-        "PreloadManager"
-      );
+  async getChapterContent(bookUrl: string, chapterIndex: number): Promise<BookContent> {
+    const api = this.apiClient;
+    const generation = this.generation;
+    if (!this.isCurrent(api, generation)) throw new Error("阅读会话已结束");
+    if (this.currentBook && (this.currentBook.url !== bookUrl ||
+      !this.currentBook.chapters.some(chapter => chapter.index === chapterIndex && !chapter.isVolume))) {
+      throw new Error("无可读取的章节");
     }
-  }
-
-  /**
-   * 获取章节内容（优先从缓存获取）
-   */
-  async getChapterContent(
-    bookUrl: string,
-    chapterIndex: number
-  ): Promise<BookContent> {
-    // 先尝试从缓存获取
-    const cachedContent = this.cache.get(bookUrl, chapterIndex);
-    if (cachedContent) {
-      logger.debug(`从缓存获取章节: 第${chapterIndex + 1}章`, "PreloadManager");
-      return cachedContent;
-    }
-
-    // 缓存未命中，直接从API获取
-    logger.debug(`从API获取章节: 第${chapterIndex + 1}章`, "PreloadManager");
-    const content = await this.apiClient.getBookContent(bookUrl, chapterIndex);
-
-    // 将获取的内容加入缓存
+    const cached = this.cache.get(bookUrl, chapterIndex);
+    if (cached) return cached;
+    const content = await api.getBookContent(bookUrl, chapterIndex);
+    if (!this.isCurrent(api, generation)) throw new Error("阅读会话已结束");
     this.cache.set(bookUrl, chapterIndex, content);
-
     return content;
   }
 
-  /**
-   * 清空预加载队列
-   */
   private clearPreloadQueue(): void {
+    this.generation++;
+    this.runningGeneration = undefined;
     this.preloadQueue.clear();
-    this.retryAttempts.clear();
-    logger.debug("清空预加载队列", "PreloadManager");
+    for (const [timer, cancel] of this.timers) {
+      clearTimeout(timer);
+      cancel?.();
+    }
+    this.timers.clear();
   }
 
-  /**
-   * 创建超时Promise
-   */
-  private createTimeoutPromise(timeout: number): Promise<never> {
-    return new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("预加载超时")), timeout);
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { this.timers.delete(timer); resolve(); }, ms);
+      this.timers.set(timer, resolve);
     });
   }
 
-  /**
-   * 延迟函数
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  /**
-   * 获取预加载统计信息
-   */
   getStats() {
     return {
-      cache: this.cache.getStats(),
-      hitRate: this.cache.getHitRate(),
-      queueSize: this.preloadQueue.size,
-      isPreloading: this.isPreloading,
+      cache: this.cache.getStats(), hitRate: this.cache.getHitRate(),
+      queueSize: this.preloadQueue.size, isPreloading: this.runningGeneration === this.generation,
     };
   }
 
-  /**
-   * 清理资源
-   */
   dispose(): void {
-    this.clearPreloadQueue();
-    this.cache.clear();
-    logger.debug("资源已清理", "PreloadManager");
+    this.disposed = true;
+    clearInterval(this.cleanupInterval);
+    this.clearCurrentBook();
   }
 }
